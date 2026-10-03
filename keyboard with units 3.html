@@ -1,0 +1,2169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Moodle Virtual Keybord </title>
+<script>
+(function () {
+/* units extension based on v43: multiple equals chains and optional getParamFunc/setParamFunc for Moodle integration. */
+
+window.MoodleFractionKeyboard = MoodleFractionKeyboard;
+
+function MoodleFractionKeyboard(options) {
+    options = options || {};
+    this.divId = options.divId;
+    this.allowAlgebra = options.allowAlgebra === true;
+    this.variableMode = options.variableMode || "x";  /* "x", "xyz", or "A-Z" */
+    this.variables = options.variables || null;      /* e.g. "x,y,z" or ["x","y","z"] */
+    this.enableEquals = options.enableEquals === true;
+    this.withUnits = options.withUnits === true;
+    this.units = this.getDefaultUnits();
+    this.unitCategories = options.unitCategories || null;
+    this.showUnitNames = options.showUnitNames !== false;
+    this.showGroupHeadings = options.showGroupHeadings === true;
+    this.language = options.language || "en";
+    this.unitValue = "";
+    this.unitScale = 1;
+    this.unitPanel = null;
+    this.readOnly = options.readOnly === true;
+    this.value = "";
+    this.implicitMul = "\uE001";
+    this.cursor = 0;
+    this.hasError = false;
+    this.moodleTargetId = options.moodleTargetId || null;
+    this.getParamFunc = (typeof options.getParamFunc === "function") ? options.getParamFunc : null;
+    this.setParamFunc = (typeof options.setParamFunc === "function") ? options.setParamFunc : null;
+    this.debug = options.debug === true;
+    this.variablePanel = null;
+    this.varShift = false;
+    this.varCaps = false;
+    /* Logical editing context for cursor rendering and navigation.
+       base = normal expression line, den = denominator, exp = exponent,
+       num = numerator, rad = root. */
+    this.cursorContext = "base";
+    this.mixedMode = "";
+    this.root = null;
+    this.display = null;
+    this.popup = null;
+    this.dragBar = null;
+    this.isDragging = false;
+    this.dragDX = 0;
+    this.dragDY = 0;
+    this.init();
+}
+
+MoodleFractionKeyboard.prototype.getDefaultUnits = function () {
+    return [
+        {
+            value: "mm",
+            scale: 0.001,
+            category: "measurements",
+            group: "length",
+            symbol: "mm",
+            latex: "\\mathrm{mm}",
+            en: "millimeter",
+            he: "מילימטר",
+            ar: "مليمتر"
+        },
+        {
+            value: "cm",
+            scale: 0.01,
+            category: "measurements",
+            group: "length",
+            symbol: "cm",
+            latex: "\\mathrm{cm}",
+            en: "centimeter",
+            he: "סנטימטר",
+            ar: "سنتيمتر"
+        },
+        {
+            value: "m",
+            scale: 1,
+            category: "measurements",
+            group: "length",
+            symbol: "m",
+            latex: "\\mathrm{m}",
+            en: "meter",
+            he: "מטר",
+            ar: "متر"
+        },
+        {
+            value: "km",
+            scale: 1000,
+            category: "measurements",
+            group: "length",
+            symbol: "km",
+            latex: "\\mathrm{km}",
+            en: "kilometer",
+            he: "קילומטר",
+            ar: "كيلومتر"
+        },
+
+        {
+            value: "cm^2",
+            scale: 0.0001,
+            category: "measurements",
+            group: "area",
+            symbol: "cm²",
+            latex: "\\mathrm{cm^2}",
+            en: "square centimeter",
+            he: "סנטימטר רבוע",
+            ar: "سنتيمتر مربع"
+        },
+        {
+            value: "m^2",
+            scale: 1,
+            category: "measurements",
+            group: "area",
+            symbol: "m²",
+            latex: "\\mathrm{m^2}",
+            en: "square meter",
+            he: "מטר רבוע",
+            ar: "متر مربع"
+        },
+        {
+            value: "km^2",
+            scale: 1000000,
+            category: "measurements",
+            group: "area",
+            symbol: "km²",
+            latex: "\\mathrm{km^2}",
+            en: "square kilometer",
+            he: "קילומטר רבוע",
+            ar: "كيلومتر مربع"
+        },
+
+        {
+            value: "cm^3",
+            scale: 0.000001,
+            category: "measurements",
+            group: "volume",
+            symbol: "cm³",
+            latex: "\\mathrm{cm^3}",
+            en: "cubic centimeter",
+            he: "סנטימטר מעוקב",
+            ar: "سنتيمتر مكعب"
+        },
+        {
+            value: "m^3",
+            scale: 1,
+            category: "measurements",
+            group: "volume",
+            symbol: "m³",
+            latex: "\\mathrm{m^3}",
+            en: "cubic meter",
+            he: "מטר מעוקב",
+            ar: "متر مكعب"
+        },
+        {
+            value: "L",
+            scale: 0.001,
+            category: "measurements",
+            group: "volume",
+            symbol: "L",
+            latex: "\\mathrm{L}",
+            en: "liter",
+            he: "ליטר",
+            ar: "لتر"
+        },
+
+        {
+            value: "s",
+            scale: 1,
+            category: "motion",
+            group: "time",
+            symbol: "s",
+            latex: "\\mathrm{s}",
+            en: "second",
+            he: "שנייה",
+            ar: "ثانية"
+        },
+        {
+            value: "min",
+            scale: 60,
+            category: "motion",
+            group: "time",
+            symbol: "min",
+            latex: "\\mathrm{min}",
+            en: "minute",
+            he: "דקה",
+            ar: "دقيقة"
+        },
+        {
+            value: "h",
+            scale: 3600,
+            category: "motion",
+            group: "time",
+            symbol: "h",
+            latex: "\\mathrm{h}",
+            en: "hour",
+            he: "שעה",
+            ar: "ساعة"
+        },
+
+        {
+            value: "m/s",
+            scale: 1,
+            category: "motion",
+            group: "speed",
+            symbol: "m/s",
+            latex: "\\frac{\\mathrm{m}}{\\mathrm{s}}",
+            en: "meter per second",
+            he: "מטר לשנייה",
+            ar: "متر في الثانية"
+        },
+        {
+            value: "km/h",
+            scale: 1000 / 3600,
+            category: "motion",
+            group: "speed",
+            symbol: "km/h",
+            latex: "\\frac{\\mathrm{km}}{\\mathrm{h}}",
+            en: "kilometer per hour",
+            he: "קילומטר לשעה",
+            ar: "كيلومتر في الساعة"
+        },
+        {
+            value: "m/s^2",
+            scale: 1,
+            category: "motion",
+            group: "acceleration",
+            symbol: "m/s²",
+            latex: "\\frac{\\mathrm{m}}{\\mathrm{s^2}}",
+            en: "meter per second squared",
+            he: "מטר לשנייה בריבוע",
+            ar: "متر في الثانية المربعة"
+        },
+
+        {
+            value: "g",
+            scale: 0.001,
+            category: "mass",
+            group: "mass",
+            symbol: "g",
+            latex: "\\mathrm{g}",
+            en: "gram",
+            he: "גרם",
+            ar: "غرام"
+        },
+        {
+            value: "kg",
+            scale: 1,
+            category: "mass",
+            group: "mass",
+            symbol: "kg",
+            latex: "\\mathrm{kg}",
+            en: "kilogram",
+            he: "קילוגרם",
+            ar: "كيلوغرام"
+        }
+    ];
+};
+
+MoodleFractionKeyboard.prototype.getUnitCategoryName = function (category) {
+    var names = {
+        measurements: { en: "Measurements", he: "מידות", ar: "القياسات" },
+        motion: { en: "Motion", he: "תנועה", ar: "الحركة" },
+        mass: { en: "Mass", he: "מסה", ar: "الكتلة" }
+    };
+
+    if (!names[category]) return category;
+    return names[category][this.language] || names[category].en;
+};
+
+MoodleFractionKeyboard.prototype.init = function () {
+    var host = document.getElementById(this.divId);
+    var self = this;
+    if (!host) return;
+
+    this.root = document.createElement("div");
+    this.root.style.position = "relative";
+    this.root.style.fontFamily = "Arial, sans-serif";
+    host.appendChild(this.root);
+
+    this.display = document.createElement("div");
+    this.display.tabIndex = 0;
+    this.display.setAttribute("dir", "ltr");
+    this.display.style.direction = "ltr";
+    this.display.style.textAlign = "left";
+    this.display.style.minHeight = "44px";
+    this.display.style.border = "1px solid #999";
+    this.display.style.borderRadius = "6px";
+    this.display.style.padding = "8px";
+    this.display.style.cursor = "pointer";
+    this.display.style.background = "#fff";
+    this.display.style.fontSize = "22px";
+    this.display.style.boxSizing = "border-box";
+    this.display.onclick = function (e) {
+        e.stopPropagation();
+        if (!self.readOnly) self.showKeyboard();
+    };
+    this.root.appendChild(this.display);
+
+    this.popup = document.createElement("div");
+    this.popup.style.position = "absolute";
+    this.popup.style.left = "0px";
+    this.popup.style.top = "55px";
+    this.popup.style.width = "360px";
+    this.popup.style.border = "1px solid #555";
+    this.popup.style.borderRadius = "8px";
+    this.popup.style.background = "#f7f7f7";
+    this.popup.style.padding = "6px";
+    this.popup.style.boxShadow = "0 3px 12px rgba(0,0,0,0.25)";
+    this.popup.style.zIndex = "99999";
+    this.popup.style.display = "none";
+    this.popup.onclick = function (e) { e.stopPropagation(); };
+    this.root.appendChild(this.popup);
+
+    this.buildKeyboard();
+
+    document.addEventListener("click", function () {
+        self.hideKeyboard();
+    });
+
+    if (this.getParamFunc) {
+        var initialValue = this.getParamFunc();
+        if (initialValue && typeof initialValue === "object") {
+            this.unitValue = initialValue.unit || "";
+            this.unitScale = (typeof initialValue.scale === "number") ? initialValue.scale : 1;
+            this.setValueFromMoodle(initialValue.expression || "");
+        } else {
+            this.setValueFromMoodle(initialValue);
+        }
+    } else {
+        this.render();
+    }
+};
+
+MoodleFractionKeyboard.prototype.buildKeyboard = function () {
+    var self = this;
+    var title = document.createElement("div");
+    title.style.cursor = "move";
+    title.style.background = "#ddd";
+    title.style.padding = "4px";
+    title.style.borderRadius = "5px";
+    title.style.marginBottom = "6px";
+    title.innerHTML = "<table width='100%' cellpadding='0' cellspacing='0'><tr><td>Math Keyboard ⌨️</td><td align='right'><button type='button' title='Close'>X</button></td></tr></table>";
+    title.getElementsByTagName("button")[0].style.width = "22px";
+    title.getElementsByTagName("button")[0].style.height = "22px";
+    title.getElementsByTagName("button")[0].style.padding = "0";
+    title.getElementsByTagName("button")[0].onclick = function () { self.hideKeyboard(); };
+    this.popup.appendChild(title);
+    this.dragBar = title;
+
+    title.onmousedown = function (e) {
+        self.isDragging = true;
+        self.dragDX = e.clientX - self.popup.offsetLeft;
+        self.dragDY = e.clientY - self.popup.offsetTop;
+        document.onmousemove = function (ev) {
+            if (!self.isDragging) return;
+            self.popup.style.left = (ev.clientX - self.dragDX) + "px";
+            self.popup.style.top = (ev.clientY - self.dragDY) + "px";
+        };
+        document.onmouseup = function () {
+            self.isDragging = false;
+            document.onmousemove = null;
+            document.onmouseup = null;
+        };
+    };
+
+    var fnRow = document.createElement("div");
+    fnRow.style.marginBottom = "5px";
+    this.popup.appendChild(fnRow);
+
+    this.addButton(fnRow, "(", function () { self.insertText("("); }, "functionKey");
+    this.addButton(fnRow, ")", function () { self.insertText(")"); }, "functionKey");
+    this.addButton(fnRow, "x²", function () { self.insertFixedPower(); }, "powerFixed");
+    this.addButton(fnRow, "x<sup>□</sup>", function () { self.insertPower(); }, "powerAny");
+    this.addButton(fnRow, "√", function () { self.insertText("SQRT()"); self.cursor--; self.cursorContext = "rad"; self.mixedMode = ""; self.render(); }, "functionKey");
+    this.addButton(fnRow, "<span style='display:inline-block;text-align:center;line-height:11px;min-width:18px;'>□<br><span style='border-top:1px solid black;display:block;'>□</span></span>", function () { self.insertMixedFractionPart(); }, "mixedFractionKey", "Enter mixed fraction");
+
+    if (this.allowAlgebra) {
+        if (this.variableMode === "A-Z") {
+            this.addButton(fnRow, "A-Z", function () { self.showVariables(); }, "atomKey", "Open variable keyboard");
+        } else {
+            this.addVariableButtons(fnRow);
+        }
+    }
+
+    if (this.withUnits) {
+        this.addButton(fnRow, "UNITS", function () { self.showUnits(); }, "unitsKey", "Select units");
+    }
+    var rows = [
+        ["7", "8", "9", "DEL", "AC"],
+        ["4", "5", "6", "*", "/"],
+        ["1", "2", "3", "+", "-"],
+        ["0", ".", "π", (this.enableEquals ? "=" : ""), "↱"]
+    ];
+
+    var table = document.createElement("table");
+    table.style.borderCollapse = "separate";
+    table.style.borderSpacing = "4px";
+    this.popup.appendChild(table);
+
+    var r, c, tr, td, label;
+    for (r = 0; r < rows.length; r++) {
+        tr = document.createElement("tr");
+        table.appendChild(tr);
+        for (c = 0; c < rows[r].length; c++) {
+            td = document.createElement("td");
+            tr.appendChild(td);
+            label = rows[r][c];
+            this.addKeyToCell(td, label);
+        }
+    }
+};
+
+MoodleFractionKeyboard.prototype.getVariableList = function () {
+    var result = [];
+    var src = this.variables;
+    var i, parts, v;
+
+    if (src && Object.prototype.toString.call(src) === "[object Array]") {
+        for (i = 0; i < src.length; i++) {
+            if (src[i]) result.push(String(src[i]));
+        }
+        return result;
+    }
+
+    if (typeof src === "string" && src !== "") {
+        parts = src.split(",");
+        for (i = 0; parts.length > i ; i++) {
+            v = parts[i];
+            while (v.length > 0 && v.charAt(0) === " ") v = v.substring(1);
+            while (v.length > 0 && v.charAt(v.length - 1) === " ") v = v.substring(0, v.length - 1);
+            if (v !== "") result.push(v);
+        }
+        return result;
+    }
+
+    if (this.variableMode === "xyz") return ["x", "y", "z"];
+    return ["x"];
+};
+
+MoodleFractionKeyboard.prototype.addVariableButtons = function (parent) {
+    var self = this;
+    var vars = this.getVariableList();
+    var i, v;
+    for (i = 0; i < vars.length; i++) {
+        v = vars[i];
+        this.addButton(parent, v, (function (name) {
+            return function () { self.insertText(name); };
+        })(v), "atomKey");
+    }
+};
+
+MoodleFractionKeyboard.prototype.addButton = function (parent, label, action, role, title) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.innerHTML = "<big>&nbsp;" + label + "&nbsp;</big>";
+    b.style.minWidth = "52px";
+    b.style.height = (role === "mixedFractionKey" ? "54px" : "40px");
+    b.style.margin = "2px";
+    b.style.verticalAlign = "middle";
+    b.onclick = action;
+    if (title) b.title = title;
+    if (role) b.setAttribute("data-role", role);
+    parent.appendChild(b);
+    return b;
+};
+
+MoodleFractionKeyboard.prototype.addKeyToCell = function (td, label) {
+    var self = this;
+    var b = document.createElement("button");
+    b.type = "button";
+    if (label === "") {
+        b.innerHTML = "&nbsp;";
+        b.disabled = true;
+    } else if (label === "π") {
+        b.innerHTML = "<big>&nbsp;&nbsp;<i>&pi;</i>&nbsp;&nbsp;</big>";
+    } else {
+        b.innerHTML = "<big>&nbsp;&nbsp;" + label + "&nbsp;&nbsp;</big>";
+    }
+    b.style.width = "62px";
+    b.style.height = "42px";
+    b.style.verticalAlign = "middle";
+
+    if (label === "↱") {
+        b.title = "Exit current fraction, exponent or root";
+    } else if (label === "AC") {
+        b.title = "Clear the input field";
+    } else if (label === "DEL") {
+        b.title = "Delete last symbol";
+    }
+
+    if (label >= "0" && label <= "9") {
+        b.setAttribute("data-role", "digitKey");
+    }
+    if (label === ".") {
+        b.setAttribute("data-role", "decimalKey");
+    }
+    if (label === "+" || label === "-" || label === "*" || label === "/" || label === "=") {
+        b.setAttribute("data-role", "operatorKey");
+    }
+    if (label === "PI" || label === "π") {
+        b.setAttribute("data-role", "atomKey");
+    }
+
+    b.onclick = function () {
+        if (label === "") return;
+        if (label === "DEL") self.deleteOne();
+        else if (label === "AC") self.clearAll();
+        else if (label === "↱") self.moveRight();
+        else if (label === "PI" || label === "π") self.insertText("PI");
+        else if (label === "/") self.insertDivide();
+        else self.insertText(label);
+    };
+    td.appendChild(b);
+};
+
+MoodleFractionKeyboard.prototype.refreshVariablePanelLetters = function (panel) {
+    var cells = panel.getElementsByTagName("td");
+    var i, b, ch, upper;
+    upper = this.varShift || this.varCaps;
+    for (i = 0; i < cells.length; i++) {
+        b = cells[i].getElementsByTagName("button")[0];
+        if (b && b.getAttribute("data-var-letter") === "1") {
+            ch = b.getAttribute("data-base-letter");
+            b.innerHTML = "<big>&nbsp;" + (upper ? ch : ch.toLowerCase()) + "&nbsp;</big>";
+        }
+    }
+};
+
+MoodleFractionKeyboard.prototype.showVariables = function () {
+    var self = this;
+    var panel, header, table, tr, td, i, ch, b, shiftButton, closeButton;
+
+    if (this.variablePanel && this.variablePanel.parentNode) {
+        this.variablePanel.parentNode.removeChild(this.variablePanel);
+        this.variablePanel = null;
+        return;
+    }
+
+    panel = document.createElement("div");
+    panel.style.position = "absolute";
+    panel.style.left = "10px";
+    panel.style.top = "48px";
+    panel.style.width = "330px";
+    panel.style.background = "#fff";
+    panel.style.border = "1px solid #999";
+    panel.style.padding = "4px";
+    panel.style.zIndex = "100000";
+    panel.onclick = function (e) { e.stopPropagation(); };
+
+    header = document.createElement("div");
+    header.innerHTML = "<table width='100%' cellpadding='0' cellspacing='0'><tr><td>Variables</td><td align='right'></td></tr></table>";
+    panel.appendChild(header);
+    closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.innerHTML = "X";
+    closeButton.title = "Close variable keyboard";
+    closeButton.onclick = function () {
+        if (panel.parentNode) panel.parentNode.removeChild(panel);
+        self.variablePanel = null;
+    };
+    header.getElementsByTagName("td")[1].appendChild(closeButton);
+
+    shiftButton = document.createElement("button");
+    shiftButton.type = "button";
+    shiftButton.innerHTML = "<big>⇧</big>";
+    shiftButton.title = "Shift / Caps lock";
+    shiftButton.onclick = function (e) {
+        e.stopPropagation();
+        if (!self.varShift && !self.varCaps) {
+            self.varShift = true;
+            shiftButton.innerHTML = "<big>⇧</big>";
+        } else if (self.varShift && !self.varCaps) {
+            self.varShift = false;
+            self.varCaps = true;
+            shiftButton.innerHTML = "<big>⇪</big>";
+        } else {
+            self.varShift = false;
+            self.varCaps = false;
+            shiftButton.innerHTML = "<big>⇧</big>";
+        }
+        self.refreshVariablePanelLetters(panel);
+    };
+    panel.appendChild(shiftButton);
+
+    table = document.createElement("table");
+    table.setAttribute("cellpadding", "2");
+    table.setAttribute("cellspacing", "2");
+    panel.appendChild(table);
+
+    for (i = 65; i <= 90; i++) {
+        if ((i - 65) % 7 === 0) {
+            tr = document.createElement("tr");
+            table.appendChild(tr);
+        }
+        td = document.createElement("td");
+        tr.appendChild(td);
+        ch = String.fromCharCode(i);
+        b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("data-var-letter", "1");
+        b.setAttribute("data-base-letter", ch);
+        b.innerHTML = "<big>&nbsp;" + ch.toLowerCase() + "&nbsp;</big>";
+        b.onclick = (function (base, button) {
+            return function (e) {
+                var val;
+                e.stopPropagation();
+                val = (self.varShift || self.varCaps) ? base : base.toLowerCase();
+                self.insertText(val);
+                if (self.varShift && !self.varCaps) {
+                    self.varShift = false;
+                    self.refreshVariablePanelLetters(panel);
+                }
+            };
+        })(ch, b);
+        td.appendChild(b);
+    }
+
+    this.variablePanel = panel;
+    this.popup.appendChild(panel);
+    this.refreshVariablePanelLetters(panel);
+};
+
+
+MoodleFractionKeyboard.prototype.getUnitByValue = function (value) {
+    var i;
+    for (i = 0; i < this.units.length; i++) {
+        if (this.units[i] && this.units[i].value === value) return this.units[i];
+    }
+    return null;
+};
+
+MoodleFractionKeyboard.prototype.isUnitCategoryEnabled = function (category) {
+    var i;
+
+    if (!this.unitCategories) return true;
+
+    for (i = 0; i < this.unitCategories.length; i++) {
+        if (this.unitCategories[i] === category) return true;
+    }
+
+    return false;
+};
+MoodleFractionKeyboard.prototype.findUnit = function (value) {
+    var i;
+
+    for (i = 0; i < this.units.length; i++) {
+        if (this.units[i].value === value) return this.units[i];
+    }
+
+    return null;
+};
+
+MoodleFractionKeyboard.prototype.getUnitName = function (unit) {
+    return unit[this.language] || unit.en || unit.value;
+};
+
+MoodleFractionKeyboard.prototype.getUnitLatex = function () {
+    var unit = this.getUnitByValue(this.unitValue);
+    if (!unit) return "";
+    if (unit.latex) return unit.latex;
+    return "\\mathrm{" + this.safeText(unit.value || "") + "}";
+};
+
+MoodleFractionKeyboard.prototype.selectUnit = function (unit) {
+    this.unitValue = unit.value;
+    this.unitScale = unit.scale;
+
+    if (this.unitPanel && this.unitPanel.parentNode) {
+        this.unitPanel.parentNode.removeChild(this.unitPanel);
+        this.unitPanel = null;
+    }
+
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.clearUnit = function () {
+    this.unitValue = "";
+    this.unitScale = 1;
+
+    if (this.unitPanel && this.unitPanel.parentNode) {
+        this.unitPanel.parentNode.removeChild(this.unitPanel);
+        this.unitPanel = null;
+    }
+
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.getUnitGroupName = function (group) {
+    var names = {
+        length: { en: "Length", he: "אורך", ar: "الطول" },
+        area: { en: "Area", he: "שטח", ar: "المساحة" },
+        volume: { en: "Volume", he: "נפח", ar: "الحجم" },
+
+        time: { en: "Time", he: "זמן", ar: "الزمن" },
+        speed: { en: "Speed", he: "מהירות", ar: "السرعة" },
+        acceleration: { en: "Acceleration", he: "תאוצה", ar: "التسارع" },
+
+        mass: { en: "Mass", he: "מסה", ar: "الكتلة" }
+    };
+
+    if (!names[group]) return group;
+    return names[group][this.language] || names[group].en;
+};
+
+MoodleFractionKeyboard.prototype.showUnits = function () {
+    var self = this;
+    var panel, header, closeButton;
+    var categories = ["measurements", "motion", "mass"];
+    var categoryIndex, category, categoryTitle;
+    var table, tr, td, button;
+    var previousGroup, unit, i;
+
+    if (this.unitPanel && this.unitPanel.parentNode) {
+        this.unitPanel.parentNode.removeChild(this.unitPanel);
+        this.unitPanel = null;
+        return;
+    }
+
+    panel = document.createElement("div");
+    panel.style.position = "absolute";
+    panel.style.left = "10px";
+    panel.style.top = "48px";
+    panel.style.width = "330px";
+    panel.style.background = "#fff";
+    panel.style.border = "1px solid #999";
+    panel.style.padding = "6px";
+    panel.style.zIndex = "100000";
+    panel.onclick = function (e) { e.stopPropagation(); };
+
+    header = document.createElement("div");
+    header.innerHTML = "<table width='100%' cellpadding='0' cellspacing='0' dir='ltr'><tr><td dir='" +
+        ((this.language === "he" || this.language === "ar") ? "rtl" : "ltr") + "'>" + "&nbsp;" +
+        (this.language === "he" ? "יחידות" : (this.language === "ar" ? "الوحدات" : "Units")) +
+        "</td><td align='right' width='1%'></td></tr></table>";
+
+    panel.appendChild(header);
+
+    closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.innerHTML = "X";
+    closeButton.title = "Close units";
+    closeButton.style.width = "22px";
+    closeButton.style.height = "22px";
+    closeButton.style.padding = "0";
+    closeButton.onclick = function () {
+        if (panel.parentNode) panel.parentNode.removeChild(panel);
+        self.unitPanel = null;
+    };
+
+    header.getElementsByTagName("td")[1].appendChild(closeButton);
+
+    tr = document.createElement("div");
+    tr.style.marginTop = "8px";
+
+    row = document.createElement("div");
+    row.style.textAlign = "right";
+
+    button = document.createElement("button");
+    button.type = "button";
+    button.innerHTML = this.language === "he" ? "ללא יחידות" :
+                    (this.language === "ar" ? "بدون وحدة" : "No unit");
+    button.onclick = function () { self.clearUnit(); };
+
+    row.appendChild(button);
+    panel.appendChild(row);
+
+    panel.appendChild(tr);
+
+
+    for (categoryIndex = 0; categoryIndex < categories.length; categoryIndex++) {
+        category = categories[categoryIndex];
+
+        if (!this.isUnitCategoryEnabled(category)) continue;
+
+        categoryTitle = document.createElement("div");
+        categoryTitle.innerHTML = "<b>" + this.getUnitCategoryName(category) + "</b>";
+        categoryTitle.style.marginTop = "8px";
+        categoryTitle.style.marginBottom = "4px";
+
+        if (this.language === "he" || this.language === "ar") {
+            categoryTitle.setAttribute("dir", "rtl");
+            categoryTitle.style.textAlign = "right";
+        }
+
+        panel.appendChild(categoryTitle);
+
+        table = document.createElement("table");
+        table.setAttribute("cellpadding", "2");
+        table.setAttribute("cellspacing", "2");
+        table.setAttribute("width", "100%");
+        panel.appendChild(table);
+
+        previousGroup = "";
+        tr = null;
+
+        for (i = 0; i < this.units.length; i++) {
+            unit = this.units[i];
+
+            if (unit.category !== category) continue;
+
+            if (previousGroup !== unit.group) {
+
+            if (previousGroup !== "") {
+                tr = document.createElement("tr");
+                td = document.createElement("td");
+                td.setAttribute("colspan", "2");
+                td.innerHTML = "&nbsp;";
+                tr.appendChild(td);
+                table.appendChild(tr);
+            }
+
+            if (this.showGroupHeadings) {
+                tr = document.createElement("tr");
+
+                td = document.createElement("td");
+                td.setAttribute("colspan", "2");
+                td.innerHTML = "<b>" + this.getUnitGroupName(unit.group) + "</b>";
+
+                if (this.language === "he" || this.language === "ar") {
+                    td.setAttribute("dir", "rtl");
+                    td.setAttribute("align", "right");
+                }
+
+                tr.appendChild(td);
+                table.appendChild(tr);
+            }
+
+            previousGroup = unit.group;
+        }
+
+            tr = document.createElement("tr");
+            table.appendChild(tr);
+
+            if (this.showUnitNames) {
+                td = document.createElement("td");
+                td.setAttribute("dir", this.language === "he" || this.language === "ar" ? "rtl" : "ltr");
+                td.innerHTML = this.getUnitName(unit);
+                tr.appendChild(td);
+            }
+
+            td = document.createElement("td");
+            td.setAttribute("align", "right");
+            td.setAttribute("dir", "ltr");
+
+            if (!this.showUnitNames) {
+                td.setAttribute("colspan", "2");
+            }
+
+            tr.appendChild(td);
+
+            button = document.createElement("button");
+            button.type = "button";
+            button.innerHTML = unit.symbol;
+            button.title = this.getUnitName(unit);
+
+            button.onclick = (function (selectedUnit) {
+                return function () {
+                    self.selectUnit(selectedUnit);
+                };
+            })(unit);
+
+            td.appendChild(button);
+        }
+    }
+
+   
+    this.unitPanel = panel;
+    this.popup.appendChild(panel);
+};
+
+MoodleFractionKeyboard.prototype.showKeyboard = function () {
+    this.popup.style.display = "block";
+};
+
+MoodleFractionKeyboard.prototype.hideKeyboard = function () {
+    this.popup.style.display = "none";
+    if (this.unitPanel && this.unitPanel.parentNode) {
+        this.unitPanel.parentNode.removeChild(this.unitPanel);
+        this.unitPanel = null;
+    }
+};
+
+
+MoodleFractionKeyboard.prototype.isContextExitChar = function (ch) {
+    return ch === ")";
+};
+
+MoodleFractionKeyboard.prototype.setCursorContextAfterInsert = function (txt) {
+    if (txt === "+" || txt === "-" || txt === "*" || txt === "/" || txt === "=") {
+        if (this.cursorContext === "base") this.cursorContext = "base";
+        return;
+    }
+    if (txt === "SQRT()") {
+        this.cursorContext = "rad";
+        return;
+    }
+};
+
+MoodleFractionKeyboard.prototype.isVariableText = function (txt) {
+    return txt.length === 1 && ((txt >= "A" && txt <= "Z") || (txt >= "a" && txt <= "z"));
+};
+
+MoodleFractionKeyboard.prototype.previousTokenKindBeforeCursor = function () {
+    var ch;
+
+    if (this.cursor <= 0) return "";
+
+    if (this.cursor >= 2 && this.value.substring(this.cursor - 2, this.cursor) === "PI") return "pi";
+
+    ch = this.value.charAt(this.cursor - 1);
+
+    if ((ch >= "0" && ch <= "9") || ch === ".") return "number";
+    if (ch === ")") return "closeParen";
+    if ((ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z")) return "variable";
+
+
+    return "";
+};
+
+MoodleFractionKeyboard.prototype.nextTokenKindFromText = function (txt) {
+    if (this.isDigitOrDecimal(txt)) return "number";
+    if (txt === "PI") return "pi";
+    if (txt === "(") return "openParen";
+    if (txt === "SQRT()") return "sqrt";
+    if (this.isVariableText(txt)) return "variable";
+    return "";
+};
+
+MoodleFractionKeyboard.prototype.shouldInsertImplicitMultiply = function (txt) {
+    var prev, next;
+
+    if (this.mixedMode === "num" || this.mixedMode === "den") return false;
+
+    prev = this.previousTokenKindBeforeCursor();
+    next = this.nextTokenKindFromText(txt);
+
+    /* Do not split a multi-digit number. Example: 345 must remain NUMBER 345. */
+    if (prev === "number" && next === "number") return false;
+
+    /* number followed by variable or PI */
+    if (prev === "number" && (next === "variable" || next === "pi")) return true;
+
+    /* variable followed by variable: xy = x*y */
+    if (prev === "variable" && next === "variable") return true;
+
+    /* number before parenthesis: 2(x+1) */
+    if (prev === "number" && next === "openParen") return true;
+
+    /* number after parenthesis: (x+1)2 */
+    if (prev === "closeParen" && next === "number") return true;
+
+    /* parenthesized expression followed by a variable, PI, or sqrt:
+       (2+3)x, (2+3)PI, (2+3)sqrt(5).
+       This also covers many completed compound objects whose textual form
+       ends with a closing parenthesis, such as ordinary fractions, editable
+       powers, roots, and mixed fractions. */
+    if (prev === "closeParen" && (next === "variable" || next === "pi" || next === "sqrt")) return true;
+
+    /* number before sqrt: 2sqrt(3).
+       This also covers fixed powers such as 2^2sqrt(3), because the last
+       completed token before sqrt is the exponent number. */
+    if (prev === "number" && next === "sqrt") return true;
+
+    /* variable before sqrt: xsqrt(3). */
+    if (prev === "variable" && next === "sqrt") return true;
+
+    /* PI before sqrt: PIsqrt(3). PI behaves like a constant number. */
+    if (prev === "pi" && next === "sqrt") return true;
+
+    return false;
+};
+
+MoodleFractionKeyboard.prototype.shouldExitDenominatorBeforeImplicitText = function (txt) {
+    var next;
+
+    if (this.mixedMode !== "") return false;
+    if (this.cursorContext !== "den") return false;
+    if (this.cursor >= this.value.length) return false;
+    if (this.value.charAt(this.cursor) !== ")") return false;
+
+    /* The denominator is still empty: /()
+       The next atom belongs inside the denominator. */
+    if (this.cursor > 0 && this.value.charAt(this.cursor - 1) === "(") {
+        return false;
+    }
+
+    next = this.nextTokenKindFromText(txt);
+
+    /*
+       A variable, PI or sqrt after a COMPLETED denominator
+       means multiplication by the whole fraction.
+
+       1/2x  -> (1/2)*x
+
+       But:
+
+       1/() + x being entered
+       x belongs inside the denominator.
+    */
+    return next === "variable" ||
+           next === "pi" ||
+           next === "sqrt";
+};
+
+MoodleFractionKeyboard.prototype.isArithmeticOperatorText = function (txt) {
+    return txt === "+" || txt === "-" || txt === "*" || txt === "/";
+};
+
+MoodleFractionKeyboard.prototype.previousCharIsArithmeticOperator = function () {
+    if (this.cursor <= 0) return false;
+    return this.isArithmeticOperatorText(this.value.charAt(this.cursor - 1));
+};
+
+MoodleFractionKeyboard.prototype.canInsertBinaryOperatorAt = function (pos) {
+    var prev;
+    if (pos <= 0) return false;
+    prev = this.value.charAt(pos - 1);
+    if (prev === "(" || prev === "=" || this.isArithmeticOperatorText(prev) || prev === "^") return false;
+    return true;
+};
+
+MoodleFractionKeyboard.prototype.insertArithmeticOperator = function (op) {
+    var replacePos;
+
+    if (this.readOnly) return;
+    if (this.mixedMode === "num" || this.mixedMode === "den") return;
+
+    if (this.previousCharIsArithmeticOperator()) {
+        replacePos = this.cursor - 1;
+        if ((op === "*" || op === "/") && !this.canInsertBinaryOperatorAt(replacePos)) return;
+        this.value = this.value.substring(0, replacePos) + op + this.value.substring(this.cursor);
+        this.cursor = replacePos + 1;
+        this.cursorContext = "base";
+        this.render();
+        return;
+    }
+
+    if ((op === "*" || op === "/") && !this.canInsertBinaryOperatorAt(this.cursor)) return;
+
+    this.value = this.value.substring(0, this.cursor) + op + this.value.substring(this.cursor);
+    this.cursor++;
+    this.cursorContext = "base";
+    this.mixedMode = "";
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.insertText = function (txt) {
+    if (this.readOnly) return;
+    var prefix = "";
+
+    if (this.isArithmeticOperatorText(txt)) {
+        this.insertArithmeticOperator(txt);
+        return;
+    }
+
+    if (!this.isInsertAllowed(txt)) return;
+
+    if (this.shouldExitDenominatorBeforeImplicitText(txt)) {
+        this.cursor++;
+        this.cursorContext = "base";
+    }
+
+    if (this.shouldInsertImplicitMultiply(txt)) prefix = this.implicitMul;
+    this.value = this.value.substring(0, this.cursor) + prefix + txt + this.value.substring(this.cursor);
+    this.cursor += prefix.length + txt.length;
+    if (this.mixedMode === "num") {
+        this.cursorContext = "num";
+    } else if (this.mixedMode === "den") {
+        this.cursorContext = "den";
+    } else {
+        this.setCursorContextAfterInsert(txt);
+    }
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.insertFixedPower = function () {
+    if (this.readOnly) return;
+    if (!this.canInsertPower()) return;
+    this.value = this.value.substring(0, this.cursor) + "^2" + this.value.substring(this.cursor);
+    this.cursor += 2;
+    this.cursorContext = "base";
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.insertPower = function () {
+    if (this.readOnly) return;
+    if (!this.canInsertPower()) return;
+    this.insertText("^()");
+    this.cursor--;
+    this.cursorContext = "exp";
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.insertDivide = function () {
+    var replacePos;
+
+    if (this.readOnly) return;
+    if (this.mixedMode === "num" || this.mixedMode === "den") return;
+
+    if (this.previousCharIsArithmeticOperator()) {
+        replacePos = this.cursor - 1;
+        if (!this.canInsertBinaryOperatorAt(replacePos)) return;
+        this.value = this.value.substring(0, replacePos) + "/()" + this.value.substring(this.cursor);
+        this.cursor = replacePos + 2;
+        this.cursorContext = "den";
+        this.mixedMode = "";
+        this.render();
+        return;
+    }
+
+    if (!this.canInsertBinaryOperatorAt(this.cursor)) return;
+    if (!this.isInsertAllowed("/")) return;
+
+    this.value = this.value.substring(0, this.cursor) + "/()" + this.value.substring(this.cursor);
+    this.cursor += 2;
+    this.cursorContext = "den";
+    this.mixedMode = "";
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.previousCharIsDigit = function () {
+    if (this.cursor <= 0) return false;
+    var ch = this.value.charAt(this.cursor - 1);
+    return ch >= "0" && ch <= "9";
+};
+
+MoodleFractionKeyboard.prototype.isUnarySignAt = function (pos) {
+    var before, ch;
+    if (pos < 0) return false;
+    ch = this.value.charAt(pos);
+    if (ch !== "-" && ch !== "+") return false;
+    if (pos === 0) return true;
+    before = this.value.charAt(pos - 1);
+    return before === "(" || before === "=" || before === "+" || before === "-" || before === "*" || before === "/" || before === "^";
+};
+
+MoodleFractionKeyboard.prototype.isUnaryMinusAt = function (pos) {
+    return this.value.charAt(pos) === "-" && this.isUnarySignAt(pos);
+};
+
+MoodleFractionKeyboard.prototype.isUnaryPlusAt = function (pos) {
+    return this.value.charAt(pos) === "+" && this.isUnarySignAt(pos);
+};
+
+MoodleFractionKeyboard.prototype.findWholeNumberStartBeforeCursor = function () {
+    var i;
+    if (!this.previousCharIsDigit()) return -1;
+    i = this.cursor - 1;
+    while (i >= 0) {
+        if (!(this.value.charAt(i) >= "0" && this.value.charAt(i) <= "9")) break;
+        i--;
+    }
+    if (this.isUnarySignAt(i)) return i;
+    return i + 1;
+};
+
+MoodleFractionKeyboard.prototype.canInsertMixedFraction = function () {
+    var start, i, ch;
+
+    if (this.readOnly) return false;
+    if (this.mixedMode === "num" || this.mixedMode === "den") return false;
+    if (!this.previousCharIsDigit()) return false;
+
+    start = this.findWholeNumberStartBeforeCursor();
+    if (start < 0) return false;
+
+    for (i = start; i < this.cursor; i++) {
+        ch = this.value.charAt(i);
+        if (i === start && (ch === "-" || ch === "+") && this.isUnarySignAt(i)) continue;
+        if (!(ch >= "0" && ch <= "9")) return false;
+    }
+
+    if (start > 0) {
+        ch = this.value.charAt(start - 1);
+        if ((ch >= "0" && ch <= "9") || ch === "." ||
+            (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z")) return false;
+    }
+
+    if (this.cursor < this.value.length) {
+        ch = this.value.charAt(this.cursor);
+        if ((ch >= "0" && ch <= "9") || ch === "." ||
+            (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z")) return false;
+    }
+
+    return true;
+};
+
+MoodleFractionKeyboard.prototype.insertMixedFractionPart = function () {
+    if (this.readOnly) return;
+    if (!this.canInsertMixedFraction()) return;
+
+    var start, whole, before, after, insertText, sign, unsignedWhole;
+
+    /*
+       Mixed number is one mathematical entity.
+       5 + fraction key creates the Moodle text:
+       (5+/)
+       Then 7, Exit, 9 creates:
+       (5+7/9)
+       Displayed as 5\frac{7}{9}.
+
+       If the whole number has a leading unary sign, the sign applies to the
+       whole mixed number, not only to the whole part:
+       -2 + fraction key creates -(2+/)
+       so -2, fraction, 2, Exit, 3 becomes -(2+2/3).
+    */
+    start = this.findWholeNumberStartBeforeCursor();
+    whole = this.value.substring(start, this.cursor);
+    before = this.value.substring(0, start);
+    after = this.value.substring(this.cursor);
+
+    sign = "";
+    unsignedWhole = whole;
+    if (whole.length > 1 && (whole.charAt(0) === "-" || whole.charAt(0) === "+") && this.isUnarySignAt(start)) {
+        sign = whole.charAt(0);
+        unsignedWhole = whole.substring(1);
+    }
+
+    insertText = sign + "(" + unsignedWhole + "+/)";
+    this.value = before + insertText + after;
+    this.cursor = start + sign.length + 1 + unsignedWhole.length + 1;   /* after sign + '(' + whole + '+' */
+
+    this.cursorContext = "num";
+    this.mixedMode = "num";
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.isOperator = function (ch) {
+    return ch === "+" || ch === "-" || ch === "*" || ch === "/" || ch === "^" || ch === "=";
+};
+
+MoodleFractionKeyboard.prototype.canInsertPower = function () {
+    if (this.cursor <= 0) return false;
+    var prev = this.value.charAt(this.cursor - 1);
+    if (this.isOperator(prev) || prev === "(") return false;
+    return true;
+};
+
+MoodleFractionKeyboard.prototype.isAfterClosedFixedPower = function () {
+    if (this.cursor < 2) return false;
+    return this.value.substring(this.cursor - 2, this.cursor) === "^2";
+};
+
+MoodleFractionKeyboard.prototype.isDigit = function (txt) {
+    return txt.length === 1 && txt >= "0" && txt <= "9";
+};
+
+MoodleFractionKeyboard.prototype.isDigitOrDecimal = function (txt) {
+    if (txt.length !== 1) return false;
+    return (txt >= "0" && txt <= "9") || txt === ".";
+};
+
+MoodleFractionKeyboard.prototype.isAtomStartText = function (txt) {
+    if (this.isDigitOrDecimal(txt)) return true;
+    if (txt === "PI") return true;
+    if (txt === "(") return true;
+    if (txt === "SQRT()") return true;
+    if (txt.length === 1 && ((txt >= "A" && txt <= "Z") || (txt >= "a" && txt <= "z"))) return true;
+    return false;
+};
+
+MoodleFractionKeyboard.prototype.isInsertAllowed = function (txt) {
+    if (this.mixedMode === "num" || this.mixedMode === "den") {
+        return this.isDigit(txt);
+    }
+
+    if (txt === "^2" || txt === "^()") return this.canInsertPower();
+
+    /* After x², the power is closed. The next key must be an operation,
+       navigation, delete, or clear. This prevents values such as 2^24. */
+    if (this.isAfterClosedFixedPower() && this.isAtomStartText(txt)) return false;
+
+    return true;
+};
+
+
+MoodleFractionKeyboard.prototype.findMatchingOpenParen = function (closePos) {
+    var depth = 0;
+    var i;
+    for (i = closePos; i >= 0; i--) {
+        var ch = this.value.charAt(i);
+        if (ch === ")") depth++;
+        else if (ch === "(") {
+            depth--;
+            if (depth === 0) return i;
+        }
+    }
+    return -1;
+};
+
+MoodleFractionKeyboard.prototype.findAtomicSqrtStartBefore = function (pos) {
+    /* Returns the index of SQRT when pos is immediately after a full SQRT(...)
+       element. Otherwise returns -1. */
+    if (pos <= 0) return -1;
+    if (this.value.charAt(pos - 1) !== ")") return -1;
+
+    var openPos = this.findMatchingOpenParen(pos - 1);
+    if (openPos < 4) return -1;
+
+    if (this.value.substring(openPos - 4, openPos) === "SQRT") {
+        return openPos - 4;
+    }
+
+    return -1;
+};
+
+MoodleFractionKeyboard.prototype.isInsideEmptySqrtCell = function () {
+    /* Example: value is 2+SQRT() and cursor is before the closing parenthesis. */
+    if (this.cursor < 5) return false;
+    if (this.cursor >= this.value.length) return false;
+    if (this.value.charAt(this.cursor) !== ")") return false;
+    return this.value.substring(this.cursor - 5, this.cursor) === "SQRT(";
+};
+
+MoodleFractionKeyboard.prototype.deleteOne = function () {
+    if (this.readOnly || this.cursor <= 0) return;
+
+    var sqrtStart;
+
+    if (this.isInsideEmptySqrtCell()) {
+        sqrtStart = this.cursor - 5;
+        this.value = this.value.substring(0, sqrtStart) + this.value.substring(this.cursor + 1);
+        this.cursor = sqrtStart;
+        this.cursorContext = "base";
+    } else {
+        sqrtStart = this.findAtomicSqrtStartBefore(this.cursor);
+
+        if (sqrtStart >= 0) {
+            this.value = this.value.substring(0, sqrtStart) + this.value.substring(this.cursor);
+            this.cursor = sqrtStart;
+            this.cursorContext = "base";
+        } else if (this.value.substring(this.cursor - 2, this.cursor) === "PI") {
+            this.value = this.value.substring(0, this.cursor - 2) + this.value.substring(this.cursor);
+            this.cursor -= 2;
+            this.cursorContext = "base";
+        } else {
+            this.value = this.value.substring(0, this.cursor - 1) + this.value.substring(this.cursor);
+            this.cursor--;
+            this.cursorContext = "base";
+        }
+    }
+
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.clearAll = function () {
+    if (this.readOnly) return;
+    this.value = "";
+    this.unitValue = "";
+    this.unitScale = 1;
+    this.selectedUnit = null;
+    this.implicitMul = "\uE001";
+    this.cursor = 0;
+    this.cursorContext = "base";
+    this.mixedMode = "";
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.findSqrtEndAt = function (pos) {
+    if (this.value.substring(pos, pos + 4) !== "SQRT") return -1;
+    if (this.value.charAt(pos + 4) !== "(") return pos + 4;
+    var depth = 0;
+    var i;
+    for (i = pos + 4; i < this.value.length; i++) {
+        if (this.value.charAt(i) === "(") depth++;
+        else if (this.value.charAt(i) === ")") {
+            depth--;
+            if (depth === 0) return i + 1;
+        }
+    }
+    return pos + 4;
+};
+
+MoodleFractionKeyboard.prototype.moveLeft = function () {
+    var sqrtStart;
+
+    if (this.mixedMode === "den") {
+        /* From denominator start back to numerator end. */
+        if (this.value.charAt(this.cursor - 1) === "(") {
+            var slash = this.cursor - 2;
+            if (this.value.charAt(slash) === "/") {
+                var numClose = slash - 1;
+                if (this.value.charAt(numClose) === ")") {
+                    this.cursor = numClose;
+                    this.cursorContext = "num";
+                    this.mixedMode = "num";
+                    this.render();
+                    return;
+                }
+            }
+        }
+    }
+
+    if (this.cursor > 0) {
+        sqrtStart = this.findAtomicSqrtStartBefore(this.cursor);
+
+        if (sqrtStart >= 0) {
+            this.cursor = sqrtStart;
+        } else if (this.isInsideEmptySqrtCell()) {
+            this.cursor = this.cursor - 5;
+        } else if (this.value.substring(this.cursor - 2, this.cursor) === "PI") {
+            this.cursor -= 2;
+        } else if (this.value.substring(this.cursor - 4, this.cursor) === "SQRT") {
+            this.cursor -= 4;
+        } else {
+            this.cursor--;
+        }
+    }
+
+    this.cursorContext = "base";
+    this.mixedMode = "";
+    this.render();
+};
+
+
+MoodleFractionKeyboard.prototype.editPreviousStructure = function () {
+    /*
+       Edit is not a left arrow. It re-enters the closest completed editable
+       structure immediately before the cursor.
+
+       Examples:
+       1/(2+3)|   -> 1/(2+3|)
+       2^(3+4)|   -> 2^(3+4|)
+       SQRT(5)|   -> SQRT(5|)
+       (5+(7)/(9))| -> (5+(7)/(9|))
+    */
+    var closePos, openPos, innerClose, innerOpen;
+
+    if (this.readOnly) return;
+    if (this.cursor <= 0) return;
+
+    closePos = this.cursor - 1;
+
+    /* Mixed number entity: (whole+(num)/(den)) .
+       When cursor is after the outer ), enter the denominator first. */
+    if (this.value.charAt(closePos) === ")") {
+        openPos = this.findMatchingOpenParen(closePos);
+
+        if (openPos >= 0) {
+            innerClose = closePos - 1;
+            if (this.value.charAt(innerClose) === ")") {
+                innerOpen = this.findMatchingOpenParen(innerClose);
+                if (innerOpen > 0 && this.value.charAt(innerOpen - 1) === "/") {
+                    this.cursor = innerClose;
+                    this.cursorContext = "den";
+                    this.mixedMode = "den";
+                    this.render();
+                    return;
+                }
+            }
+
+            /* Completed square-root. */
+            if (openPos >= 4 && this.value.substring(openPos - 4, openPos) === "SQRT") {
+                this.cursor = closePos;
+                this.cursorContext = "rad";
+                this.mixedMode = "";
+                this.render();
+                return;
+            }
+
+            /* Completed exponent written as ^(...). */
+            if (openPos > 0 && this.value.charAt(openPos - 1) === "^") {
+                this.cursor = closePos;
+                this.cursorContext = "exp";
+                this.mixedMode = "";
+                this.render();
+                return;
+            }
+
+            /* Completed denominator written as /(...). */
+            if (openPos > 0 && this.value.charAt(openPos - 1) === "/") {
+                this.cursor = closePos;
+                this.cursorContext = "den";
+                this.mixedMode = "";
+                this.render();
+                return;
+            }
+        }
+    }
+
+    /* If the cursor is after PI, edit cannot enter it; it is atomic.
+       Same for a fixed x²: the exponent is closed and not editable. */
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.moveRight = function () {
+    var end;
+
+    if (this.mixedMode === "num") {
+        if (this.value.charAt(this.cursor) === "/") {
+            this.cursor++;
+            this.cursorContext = "den";
+            this.mixedMode = "den";
+            this.render();
+            return;
+        }
+    }
+
+    if (this.mixedMode === "den") {
+        if (this.value.charAt(this.cursor) === ")") {
+            this.cursor++;
+            this.cursorContext = "base";
+            this.mixedMode = "";
+            this.render();
+            return;
+        }
+    }
+
+    /* If the cursor is at the end of a denominator/exponent/root cell,
+       pressing right arrow should move the logical cursor out of that cell. */
+    if (this.cursorContext !== "base") {
+        if (this.cursor < this.value.length && this.isContextExitChar(this.value.charAt(this.cursor))) {
+            this.cursor++;
+        }
+        this.cursorContext = "base";
+        this.mixedMode = "";
+        this.render();
+        return;
+    }
+
+    if (this.value.substring(this.cursor, this.cursor + 2) === "PI") {
+        this.cursor += 2;
+    } else if (this.value.substring(this.cursor, this.cursor + 4) === "SQRT") {
+        end = this.findSqrtEndAt(this.cursor);
+        this.cursor = end;
+    } else if (this.cursor < this.value.length) {
+        this.cursor++;
+    }
+
+    this.cursorContext = "base";
+    this.mixedMode = "";
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.setValueFromMoodle = function (s) {
+    if (typeof s !== "string") s = "";
+    this.value = s;
+    this.cursor = this.value.length;
+    this.cursorContext = "base";
+    this.mixedMode = "";
+    this.render();
+};
+
+MoodleFractionKeyboard.prototype.getValueForMoodle = function () {
+    var result = this.parseFull(this.value, false);
+    if (!result.ok) return "";
+    return this.value.split(this.implicitMul).join("*");
+};
+
+MoodleFractionKeyboard.prototype.setValue = function (s) {
+    this.setValueFromMoodle(s);
+};
+
+MoodleFractionKeyboard.prototype.getValue = function () {
+    return this.getValueForMoodle();
+};
+
+MoodleFractionKeyboard.prototype.updateMoodleTarget = function () {
+    var moodleValue = this.getValueForMoodle();
+    var el;
+
+    if (this.setParamFunc) {
+        this.setParamFunc(moodleValue, this.unitValue || "", this.unitValue ? this.unitScale : 1);
+    }
+
+    if (!this.moodleTargetId) return;
+    el = document.getElementById(this.moodleTargetId);
+    if (!el) return;
+    el.value = moodleValue;
+    el.setAttribute("dir", "ltr");
+    el.style.direction = "ltr";
+    el.style.textAlign = "left";
+    el.style.unicodeBidi = "plaintext";
+};
+
+MoodleFractionKeyboard.prototype.render = function () {
+    var displayValue = this.value.substring(0, this.cursor) + "\uE000" + this.value.substring(this.cursor);
+    var displayResult = this.toLatex(displayValue, true, this.cursorContext);
+    var validationResult = this.parseFull(this.value, false);
+    var html;
+
+    var unitLatex = this.getUnitLatex();
+    if (unitLatex !== "") {
+        html = "\\(" + displayResult.latex + "\\;" + unitLatex + "\\)";
+    } else {
+        html = "\\(" + displayResult.latex + "\\)";
+    }
+
+    if (this.value !== "" && !validationResult.ok) {
+        html += " ❗";
+        this.hasError = true;
+    } else {
+        this.hasError = false;
+    }
+
+    this.display.innerHTML = html;
+
+    if (window.MathJax && window.MathJax.typesetPromise) {
+        window.MathJax.typesetPromise([this.display]);
+    }
+
+    this.updatePowerButtonState();
+    this.updateMoodleTarget();
+};
+
+MoodleFractionKeyboard.prototype.updatePowerButtonState = function () {
+    var buttons = this.popup.getElementsByTagName("button");
+    var canPower = this.canInsertPower();
+    var blockAtomAfterSquare = this.isAfterClosedFixedPower();
+    var inMixedCell = (this.mixedMode === "num" || this.mixedMode === "den");
+    var role, i;
+
+    for (i = 0; i < buttons.length; i++) {
+        role = buttons[i].getAttribute("data-role");
+
+        if (inMixedCell) {
+            if (role === "digitKey") buttons[i].disabled = false;
+            else if (role === "decimalKey" || role === "operatorKey" || role === "atomKey" ||
+                     role === "functionKey" || role === "powerAny" || role === "powerFixed" ||
+                     role === "mixedFractionKey" || role === "unitsKey") buttons[i].disabled = true;
+            continue;
+        }
+
+        if (role === "powerAny" || role === "powerFixed") {
+            buttons[i].disabled = !canPower;
+        } else if (role === "mixedFractionKey") {
+            buttons[i].disabled = !this.canInsertMixedFraction();
+        } else if (role === "digitKey" || role === "decimalKey" || role === "atomKey") {
+            buttons[i].disabled = blockAtomAfterSquare;
+        } else {
+            buttons[i].disabled = false;
+        }
+    }
+};
+
+/* ===================== PARSER ===================== */
+
+MoodleFractionKeyboard.prototype.makeParser = function (s) {
+    return { s: s, pos: 0 };
+};
+
+MoodleFractionKeyboard.prototype.peek = function (p) {
+    if (p.pos >= p.s.length) return "";
+    return p.s.charAt(p.pos);
+};
+
+MoodleFractionKeyboard.prototype.take = function (p, ch) {
+    if (this.peek(p) === ch) {
+        p.pos++;
+        return true;
+    }
+    return false;
+};
+
+MoodleFractionKeyboard.prototype.parseFull = function (s, allowCursor, cursorContext) {
+    var p = this.makeParser(s);
+    p.cursorContext = cursorContext || "base";
+    var ast;
+
+    if (s === "") {
+        return { ok: true, ast: null, pos: 0, error: "" };
+    }
+
+    ast = this.parseEquation(p, allowCursor === true);
+
+    if (!ast) {
+        return { ok: false, error: "empty or invalid expression", ast: null, pos: p.pos };
+    }
+
+    if (p.pos !== p.s.length) {
+        return { ok: false, error: "unexpected character", ast: ast, pos: p.pos };
+    }
+
+    if (this.treeHasError(ast, allowCursor === true)) {
+        return { ok: false, error: "incomplete expression", ast: ast, pos: p.pos };
+    }
+
+    return { ok: true, ast: ast, pos: p.pos, error: "" };
+};
+
+MoodleFractionKeyboard.prototype.treeHasError = function (node, allowCursor) {
+    var k;
+    if (!node) return false;
+    if (node.type === "missing" || node.type === "error") return true;
+    if (node.missingClose === true) return true;
+    if (node.type === "cursor") return allowCursor !== true;
+    for (k in node) {
+        if (node.hasOwnProperty(k) && node[k] && typeof node[k] === "object") {
+            if (this.treeHasError(node[k], allowCursor)) return true;
+        }
+    }
+    return false;
+};
+
+MoodleFractionKeyboard.prototype.parseEquation = function (p, allowCursor) {
+    var first = this.parseAddSub(p, allowCursor);
+    var right;
+    var sides;
+
+    if (!first) return null;
+
+    if (!this.enableEquals || this.peek(p) !== "=") {
+        return first;
+    }
+
+    sides = [first];
+
+    while (this.take(p, "=")) {
+        right = this.parseAddSub(p, allowCursor);
+        if (!right) right = { type: "missing" };
+        sides.push(right);
+    }
+
+    return { type: "equation", sides: sides };
+};
+
+MoodleFractionKeyboard.prototype.parseAddSub = function (p, allowCursor) {
+    var node = this.parseMulDiv(p, allowCursor);
+    var op, right;
+    if (!node) return null;
+
+    while (this.peek(p) === "+" || this.peek(p) === "-") {
+        op = this.peek(p);
+        p.pos++;
+        right = this.parseMulDiv(p, allowCursor);
+        if (!right) right = { type: "missing" };
+        node = { type: "binary", op: op, left: node, right: right };
+    }
+
+    if (allowCursor === true && this.peek(p) === "\uE000") {
+        p.pos++;
+        node = { type: "cursorAfter", child: node };
+    }
+
+    return node;
+};
+
+MoodleFractionKeyboard.prototype.parseMulDiv = function (p, allowCursor) {
+    var node = this.parsePower(p, allowCursor);
+    var op, right;
+    if (!node) return null;
+
+    while (this.peek(p) === "*" || this.peek(p) === "/" || this.peek(p) === "\uE001") {
+        op = this.peek(p);
+        p.pos++;
+        right = this.parsePower(p, allowCursor);
+        if (!right) right = { type: "missing" };
+
+        if (op === "*" || op === "\uE001") {
+            node = { type: "binary", op: (op === "\uE001" ? "impmul" : "*"), left: node, right: right };
+        } else {
+            node = this.attachDivideToRightmostFactor(node, right);
+        }
+    }
+
+    if (allowCursor === true && this.peek(p) === "\uE000") {
+        p.pos++;
+        node = { type: "cursorAfter", child: node };
+    }
+
+    return node;
+};
+
+MoodleFractionKeyboard.prototype.attachDivideToRightmostFactor = function (node, denominator) {
+    if (node && node.type === "binary" && (node.op === "*" || node.op === "impmul")) {
+        return {
+            type: "binary",
+            op: node.op,
+            left: node.left,
+            right: this.attachDivideToRightmostFactor(node.right, denominator)
+        };
+    }
+
+    return { type: "binary", op: "/", left: node, right: denominator };
+};
+
+MoodleFractionKeyboard.prototype.shouldAttachCursorInsideAtom = function (p) {
+    return p.cursorContext === "den" || p.cursorContext === "exp" || p.cursorContext === "num" || p.cursorContext === "rad";
+};
+
+MoodleFractionKeyboard.prototype.parsePower = function (p, allowCursor) {
+    var node = this.parseUnary(p, allowCursor);
+    var right;
+    if (!node) return null;
+
+    if (this.peek(p) === "^") {
+        p.pos++;
+        right = this.parsePower(p, allowCursor); /* right associative */
+        if (!right) right = { type: "missing" };
+        node = { type: "binary", op: "^", left: node, right: right };
+    }
+
+    if (allowCursor === true && this.peek(p) === "\uE000" && this.shouldAttachCursorInsideAtom(p)) {
+        p.pos++;
+        node = { type: "cursorAfter", child: node };
+    }
+
+    return node;
+};
+
+MoodleFractionKeyboard.prototype.parseUnary = function (p, allowCursor) {
+    if (this.peek(p) === "-" || this.peek(p) === "+") {
+        var op = this.peek(p);
+        p.pos++;
+        return { type: "unary", op: op, child: this.parseUnary(p, allowCursor) || { type: "missing" } };
+    }
+    return this.parseAtom(p, allowCursor);
+};
+
+MoodleFractionKeyboard.prototype.parseAtom = function (p, allowCursor) {
+    var ch = this.peek(p);
+    var start;
+
+    if (ch === "") return null;
+
+    if (ch === "\uE000") {
+        p.pos++;
+        if (allowCursor === true) return { type: "cursor" };
+        return { type: "error", label: "cursor not allowed" };
+    }
+
+    if ((ch >= "0" && ch <= "9") || ch === ".") {
+        start = p.pos;
+        while (p.pos < p.s.length) {
+            ch = p.s.charAt(p.pos);
+            if (!((ch >= "0" && ch <= "9") || ch === ".")) break;
+            p.pos++;
+        }
+        return { type: "number", value: p.s.substring(start, p.pos) };
+    }
+
+    if (p.s.substring(p.pos, p.pos + 2) === "PI") {
+        p.pos += 2;
+        return { type: "pi" };
+    }
+
+    if (p.s.substring(p.pos, p.pos + 4) === "SQRT") {
+        p.pos += 4;
+        if (this.take(p, "(")) {
+            var inside = this.parseAddSub(p, allowCursor);
+            if (!inside) inside = { type: "missing" };
+            if (!this.take(p, ")")) {
+                return { type: "sqrt", child: inside, missingClose: true };
+            }
+            return { type: "sqrt", child: inside };
+        }
+        return { type: "sqrt", child: { type: "missing" } };
+    }
+
+    if (ch === "(") {
+        p.pos++;
+        var expr = this.parseAddSub(p, allowCursor);
+        if (!expr) expr = { type: "missing" };
+        if (!this.take(p, ")")) {
+            return { type: "group", child: expr, missingClose: true };
+        }
+        return { type: "group", child: expr };
+    }
+
+    if ((ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z")) {
+        p.pos++;
+        return { type: "variable", name: ch };
+    }
+
+    return null;
+};
+
+/* ===================== AST TO LATEX ===================== */
+
+MoodleFractionKeyboard.prototype.precedence = function (node) {
+    if (!node) return 100;
+    if (node.type === "equation") return 5;
+    if (node.type === "binary") {
+        if (node.op === "=") return 5;
+        if (node.op === "+" || node.op === "-") return 10;
+        if (node.op === "*" || node.op === "/" || node.op === "impmul") return 20;
+        if (node.op === "^") return 30;
+    }
+    if (node.type === "unary") return 25;
+    return 100;
+};
+
+MoodleFractionKeyboard.prototype.toLatex = function (s, allowCursor, forcedCursorContext) {
+    var result = this.parseFull(s, allowCursor === true, forcedCursorContext || "base");
+    var latex;
+
+    if (result.ast) {
+        latex = this.latexFromNode(result.ast, 0, "", forcedCursorContext || "");
+    } else {
+        latex = "\\mid";
+    }
+
+    if (!result.ok && result.pos < s.length) {
+        latex += "\\;\\text{" + this.safeText(s.substring(result.pos)) + "}";
+    }
+
+    if (this.debug && result.ast) {
+        this.dumpTree(result.ast);
+    }
+
+    return { ok: result.ok, latex: latex, ast: result.ast, error: result.error, pos: result.pos };
+};
+
+MoodleFractionKeyboard.prototype.safeText = function (s) {
+    var out = "";
+    var i, ch;
+    for (i = 0; i < s.length; i++) {
+        ch = s.charAt(i);
+        if (ch === "\uE000") out += "|";
+        else if (ch === "\uE001") out += "*";
+        else if (ch === "\\") out += "\\backslash ";
+        else if (ch === "{") out += "\\{";
+        else if (ch === "}") out += "\\}";
+        else out += ch;
+    }
+    return out;
+};
+
+MoodleFractionKeyboard.prototype.getMixedGroupParts = function (node) {
+    var add, frac;
+
+    if (!node || node.type !== "group") return null;
+    add = node.child;
+    if (!add || add.type !== "binary" || add.op !== "+") return null;
+
+    frac = add.right;
+    if (!frac || frac.type !== "binary" || frac.op !== "/") return null;
+
+    if (!add.left || add.left.type !== "number") return null;
+
+    return {
+        whole: add.left,
+        numerator: frac.left,
+        denominator: frac.right
+    };
+};
+
+MoodleFractionKeyboard.prototype.cursorLatex = function (side) {
+    /*
+       The cursor must be rendered in the math style of the position where
+       the next key will be inserted. Do not force \scriptsize inside a
+       denominator or exponent: MathJax already applies the correct style
+       when the cursor is inside the denominator/exponent braces.
+
+       - Inside exponent: the surrounding ^{...} makes it script-sized.
+       - Inside denominator/numerator/root: the surrounding structure places
+         it in the correct vertical position.
+       - Outside any structure: add a small space before the cursor so it is
+         clearly after the fraction/power, not inside it.
+    */
+
+    if (side === "exp") return "\\mathord{\\vphantom{0}\\mid}";
+    if (side === "den") return "\\mathord{\\vphantom{0}\\mid}";
+    if (side === "num") return "\\mathord{\\vphantom{0}\\mid}";
+    if (side === "rad") return "\\mathord{\\vphantom{0}\\mid}";
+
+    return "\\,\\mathord{\\vphantom{0}\\mid}";
+};
+
+MoodleFractionKeyboard.prototype.latexFromNode = function (node, parentPrec, side, forcedCursorContext) {
+    var s, lp, rp, myPrec;
+    if (!node) return "\\square";
+
+    if (node.type === "number") return node.value;
+    if (node.type === "variable") return node.name;
+    if (node.type === "pi") return "\\pi";
+    if (node.type === "cursor") return this.cursorLatex(forcedCursorContext || side);
+    if (node.type === "cursorAfter") return this.latexFromNode(node.child, parentPrec, side, forcedCursorContext) + this.cursorLatex(forcedCursorContext || side);
+    if (node.type === "missing") return "\\square";
+    if (node.type === "error") return "\\square";
+
+    if (node.type === "equation") {
+        var eqParts = [];
+        var eqIndex;
+        for (eqIndex = 0; eqIndex < node.sides.length; eqIndex++) {
+            eqParts.push(this.latexFromNode(node.sides[eqIndex], 0, "", forcedCursorContext));
+        }
+        return eqParts.join("=");
+    }
+
+    if (node.type === "group") {
+        var mixedParts = this.getMixedGroupParts(node);
+        if (mixedParts) {
+            return this.latexFromNode(mixedParts.whole, 0, "", forcedCursorContext) +
+                   "\\frac{" + this.latexFromNode(mixedParts.numerator, 0, "num", forcedCursorContext) +
+                   "}{" + this.latexFromNode(mixedParts.denominator, 0, "den", forcedCursorContext) + "}";
+        }
+        if (node.missingClose === true) {
+            return "(" + this.latexFromNode(node.child, 0, "", forcedCursorContext);
+        }
+        if (side === "exp" || side === "den" || side === "num" || side === "rad") {
+            return this.latexFromNode(node.child, 0, side, forcedCursorContext);
+        }
+        return "\\left(" + this.latexFromNode(node.child, 0, "", forcedCursorContext) + "\\right)";
+    }
+
+    if (node.type === "sqrt") {
+        return "\\sqrt{" + this.latexFromNode(node.child, 0, "rad", forcedCursorContext) + "}";
+    }
+
+    if (node.type === "unary") {
+        s = node.op + this.latexFromNode(node.child, this.precedence(node), "right", forcedCursorContext);
+        if (this.precedence(node) < parentPrec) s = "\\left(" + s + "\\right)";
+        return s;
+    }
+
+    if (node.type === "binary") {
+        myPrec = this.precedence(node);
+
+        if (node.op === "/") {
+            s = "\\frac{" + this.latexFromNode(node.left, 0, "num", forcedCursorContext) + "}{" + this.latexFromNode(node.right, 0, "den", forcedCursorContext) + "}";
+            if (myPrec < parentPrec) s = "\\left(" + s + "\\right)";
+            return s;
+        }
+
+        if (node.op === "^") {
+            lp = this.latexFromNode(node.left, myPrec, "base", forcedCursorContext);
+            rp = this.latexFromNode(node.right, 0, "exp", forcedCursorContext);
+            s = lp + "^{" + rp + "}";
+            if (myPrec < parentPrec) s = "\\left(" + s + "\\right)";
+            return s;
+        }
+
+        if (node.op === "*" || node.op === "impmul") {
+            lp = this.latexFromNode(node.left, myPrec, "left", forcedCursorContext);
+            rp = this.latexFromNode(node.right, myPrec, "right", forcedCursorContext);
+            if (node.op === "impmul") {
+                s = lp + "\\," + rp;
+            } else {
+                s = lp + "\\cdot " + rp;
+            }
+            if (myPrec < parentPrec) s = "\\left(" + s + "\\right)";
+            return s;
+        }
+
+        if (node.op === "=") {
+            lp = this.latexFromNode(node.left, myPrec, "left", forcedCursorContext);
+            rp = this.latexFromNode(node.right, myPrec, "right", forcedCursorContext);
+            s = lp + "=" + rp;
+            if (myPrec < parentPrec) s = "\\left(" + s + "\\right)";
+            return s;
+        }
+
+        if (node.op === "+" || node.op === "-") {
+            lp = this.latexFromNode(node.left, myPrec, "left", forcedCursorContext);
+            rp = this.latexFromNode(node.right, myPrec + (node.op === "-" ? 1 : 0), "right", forcedCursorContext);
+            s = lp + node.op + rp;
+            if (myPrec < parentPrec) s = "\\left(" + s + "\\right)";
+            return s;
+        }
+    }
+
+    return "\\square";
+};
+
+/* ===================== DEBUG TREE DUMP ===================== */
+
+MoodleFractionKeyboard.prototype.dumpTree = function (ast) {
+    function isObject(x) {
+        return x !== null && typeof x === "object";
+    }
+
+    function shortValue(x) {
+        if (x === null) return "null";
+        if (typeof x === "undefined") return "undefined";
+        if (typeof x === "string") return '"' + x + '"';
+        if (typeof x === "number" || typeof x === "boolean") return String(x);
+        if (Array.isArray(x)) return "Array[" + x.length + "]";
+        if (x.type) {
+            if (x.type === "binary") return "{binary " + (x.op === "impmul" ? "implicit *" : x.op) + "}";
+            if (x.type === "unary") return "{unary " + x.op + "}";
+            return "{" + x.type + "}";
+        }
+        return "{object}";
+    }
+
+    function dumpAny(value, name, prefix, isLast) {
+        var connector = isLast ? "└── " : "├── ";
+        var keys, nextPrefix, i;
+
+        if (!isObject(value)) {
+            console.log(prefix + connector + name + ": " + shortValue(value));
+            return;
+        }
+
+        console.log(prefix + connector + name + ": " + shortValue(value));
+        keys = Object.keys(value);
+        nextPrefix = prefix + (isLast ? "    " : "│   ");
+
+        for (i = 0; i < keys.length; i++) {
+            dumpAny(value[keys[i]], keys[i], nextPrefix, i === keys.length - 1);
+        }
+    }
+
+    console.log("========== AST ==========");
+    dumpAny(ast, "root", "", true);
+    console.log("=========================");
+};
+
+
+
+})();
+</script>
+<script>
+window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]] },
+    svg: { fontCache: "global" }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+</head>
+<body>
+<h2>Moodle Fraction Keyboard with Units</h2>
+<p>Click the display field to open the virtual keyboard.  ⌨</p>
+
+
+<div id="keyboardHost"></div>
+
+<h3>Value passed to Moodle</h3>
+<textarea id="moodleValueField" rows="3" cols="60" dir="ltr"></textarea>
+<p>Unit: <input id="moodleUnitField" dir="ltr"> &nbsp; Scale: <input id="moodleScaleField" dir="ltr"></p>
+
+<script>
+
+function getParam1234() {
+    return {
+        expression: document.getElementById("moodleValueField").value,
+        unit: document.getElementById("moodleUnitField").value,
+        scale: Number(document.getElementById("moodleScaleField").value) || 1
+    };
+}
+
+function setParam1234(s, unit, scale) {
+    document.getElementById("moodleValueField").value = s;
+     
+    let els = s.split('=');
+    if ( this.debug) {
+        els.forEach(function(e, i){console.log(i+':'+e)});
+    }
+
+    document.getElementById("moodleUnitField").value = unit;
+    document.getElementById("moodleScaleField").value = scale;
+}
+
+var fk = new window.MoodleFractionKeyboard({
+    divId: "keyboardHost",
+    moodleTargetId: "moodleValueField",
+    getParamFunc: getParam1234,
+    setParamFunc: setParam1234,
+    allowAlgebra:true,
+    variableMode: "A-Z",
+    variables: "s,v,t", 
+    enableEquals: true,
+    withUnits: true,
+    language: "he",
+    unitCategories: ["measurements", "motion"],
+    showUnitNames: false,
+    showGroupHeadings: false,
+    readOnly: false,
+    debug: true
+});
+
+</script>
+</body>
+</html>

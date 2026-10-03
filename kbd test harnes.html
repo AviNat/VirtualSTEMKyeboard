@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Moodle STEM Expression Analyzer Test</title>
+
+<script>
+window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]] },
+    svg: { fontCache: "global" }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+<script src="./STEMkbd-v2.js"></script>
+</head>
+
+<body>
+
+<h2>MoodleStemExpression test harness</h2>
+
+<table cellpadding="0" cellspacing="0" style="direction:ltr;">
+<tr>
+<td style="vertical-align:top;padding-right:16px;">
+    <div id="answerArea"
+         style="width:320px;min-height:50px;background-color:white;border:1px solid #777;border-radius:6px;padding:7px 10px;box-sizing:border-box;font-size:22px;direction:ltr;">
+    </div>
+
+    <p>
+        Moodle expression:
+        <input id="moodleExpression" type="text" readonly
+               style="width:310px;direction:ltr;">
+    </p>
+
+    <p>
+        Unit:
+        <input id="moodleUnit" type="text" readonly style="width:90px;direction:ltr;">
+        Scale:
+        <input id="moodleScale" type="text" readonly style="width:90px;direction:ltr;">
+    </p>
+</td>
+
+<td style="vertical-align:top;">
+    <div id="keyboardHost"></div>
+</td>
+</tr>
+</table>
+
+<h3>Analysis of keyboard value</h3>
+<pre id="keyboardAnalysis" style="direction:ltr;border:1px solid #aaa;padding:10px;min-height:120px;white-space:pre-wrap;"></pre>
+
+<h3>Direct analyzer test</h3>
+
+<p>
+    <input id="directExpression" type="text"
+           value="ab+a*b=alpha+t_0=(2/3)=2/(3)"
+           style="width:520px;direction:ltr;">
+    <button type="button" id="analyzeButton">Analyze</button>
+</p>
+
+<pre id="directAnalysis" style="direction:ltr;border:1px solid #aaa;padding:10px;min-height:120px;white-space:pre-wrap;"></pre>
+
+<script>
+let keyboard;
+
+let variableDefinitions = [
+    "a",
+    // "b",
+    // "s",
+    "x",
+    "ab",
+    // { value: "alpha", label: "&alpha;" },
+    { value: "t", label: "t" }
+];
+
+function displayAnalysis(elementId, value) {
+    let result = window.MoodleStemExpression.analyze(value, variableDefinitions);
+    document.getElementById(elementId).textContent = JSON.stringify(result, null, 4);
+}
+
+function setParamTest(expression, unit, scale) {
+    document.getElementById("moodleExpression").value = expression;
+    document.getElementById("moodleUnit").value = unit;
+    document.getElementById("moodleScale").value = scale;
+    displayAnalysis("keyboardAnalysis", expression);
+}
+
+keyboard = new window.MoodleStemKeyboard({
+    divId: "keyboardHost",
+    // displayId: "answerArea",
+    displayWidth: 300, 
+    allowAlgebra: true,
+    variableMode: "xyz",
+    variables: variableDefinitions,
+    allowSubscript: true,
+    maxEquals: 2,
+    withUnits: true,
+    unitCategories: ["math", "measurements", "motion", "mass"],
+    //unitsKeyLabel : '[x]',
+    showUnitNames: true,
+    showGroupHeadings: false,
+    language: "he",
+    MulOp : "\\cdot",
+    showKeyboardButton: true,
+    power10: true, 
+    showPi: true, 
+    setParamFunc: setParamTest
+});
+
+keyboard.showKeyboard();
+
+document.getElementById("analyzeButton").onclick = function () {
+    displayAnalysis("directAnalysis", document.getElementById("directExpression").value);
+};
+
+document.getElementById("directExpression").onkeydown = function (e) {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        displayAnalysis("directAnalysis", this.value);
+    }
+};
+
+displayAnalysis("directAnalysis", document.getElementById("directExpression").value);
+</script>
+
+</body>
+</html>

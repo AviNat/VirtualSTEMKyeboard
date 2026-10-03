@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Moodle Virtual Keybord </title>
+<script src="./StemKbdLib.js"></script>
+
+<script>
+window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]] },
+    svg: { fontCache: "global" }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+</head>
+<body>
+<h2>Moodle Fraction Keyboard with Units</h2>
+<p>Click the display field to open the virtual keyboard.  ⌨</p>
+
+
+<div id="keyboardHost"></div>
+
+<h3>Value passed to Moodle</h3>
+<textarea id="moodleValueField" rows="3" cols="60" dir="ltr"></textarea>
+<p>Unit: <input id="moodleUnitField" dir="ltr"> &nbsp; Scale: <input id="moodleScaleField" dir="ltr"></p>
+
+<script>
+
+function getParam1234() {
+    return {
+        expression: document.getElementById("moodleValueField").value,
+        unit: document.getElementById("moodleUnitField").value,
+        scale: Number(document.getElementById("moodleScaleField").value) || 1
+    };
+}
+
+function setParam1234(s, unit, scale) {
+    document.getElementById("moodleValueField").value = s;
+     
+    let els = s.split('=');
+    if ( this.debug) {
+        els.forEach(function(e, i){console.log(i+':'+e)});
+    }
+
+    document.getElementById("moodleUnitField").value = unit;
+    document.getElementById("moodleScaleField").value = scale;
+}
+
+var fk = new window.MoodleStemKeyboard({
+    divId: "keyboardHost",
+    moodleTargetId: "moodleValueField",
+    getParamFunc: getParam1234,
+    setParamFunc: setParam1234,
+    allowAlgebra:true,
+    variableMode: "A-Z",
+    variables: "s,v,t", 
+    enableEquals: true,
+    withUnits: true,
+    language: "he",
+    unitCategories: ["measurements", "motion"],
+    showUnitNames: true,
+    showGroupHeadings: false,
+    readOnly: false,
+    debug: true
+});
+
+</script>
+</body>
+</html>

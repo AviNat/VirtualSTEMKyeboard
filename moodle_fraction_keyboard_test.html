@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>בדיקת ספריית קלט שברים למוודל</title>
+  <script>
+/*
+  MoodleFractionKeyboard - ספריית קלט ביטויים למוודל Formulas
+  מאפיינים מרכזיים:
+  - שדה תצוגה בלבד
+  - מקלדת וירטואלית בפופאפ
+  - תמיכה בשברים פשוטים, שברים מעורבים, ביטויים אלגבריים, שורש וחזקות
+  - תצוגת LaTeX חיה
+  - ללא CSS חיצוני, ללא =>, ללא RegExp
+*/
+(function () {
+  function MoodleFractionKeyboard(options) {
+    this.hostId = options.hostId;
+    this.allowAlgebra = options.allowAlgebra === true;
+    this.variableMode = options.variableMode || "x"; // "x" or "az"
+    this.readOnly = options.readOnly === true;
+    this.value = "";
+    this.cursor = 0;
+    this.host = document.getElementById(this.hostId);
+    this.onChange = typeof options.onChange === "function" ? options.onChange : null;
+    this.build();
+  }
+
+  MoodleFractionKeyboard.prototype.build = function () {
+    var self = this;
+    if (!this.host) { return; }
+    this.host.innerHTML = "";
+    this.wrapper = document.createElement("div");
+    this.wrapper.style.position = "relative";
+    this.wrapper.style.display = "inline-block";
+    this.wrapper.style.direction = "ltr";
+    this.wrapper.style.fontFamily = "Arial, sans-serif";
+
+    this.display = document.createElement("div");
+    this.display.tabIndex = 0;
+    this.display.style.minWidth = "320px";
+    this.display.style.minHeight = "46px";
+    this.display.style.border = "1px solid #777";
+    this.display.style.borderRadius = "6px";
+    this.display.style.background = this.readOnly ? "#eee" : "#fff";
+    this.display.style.padding = "8px";
+    this.display.style.cursor = this.readOnly ? "default" : "pointer";
+    this.display.style.boxSizing = "border-box";
+    this.display.style.textAlign = "center";
+    this.display.style.fontSize = "20px";
+
+    this.mathLine = document.createElement("div");
+    this.mathLine.style.minHeight = "24px";
+    this.mathLine.style.textAlign = "center";
+
+    this.display.appendChild(this.mathLine);
+    this.wrapper.appendChild(this.display);
+
+    this.popup = document.createElement("div");
+    this.popup.style.position = "fixed";
+    this.popup.style.top = "140px";
+    this.popup.style.left = "140px";
+    this.popup.style.zIndex = "9999";
+    this.popup.style.background = "#f9f9f9";
+    this.popup.style.border = "1px solid #777";
+    this.popup.style.borderRadius = "8px";
+    this.popup.style.padding = "8px";
+    this.popup.style.boxShadow = "0 3px 12px rgba(0,0,0,0.25)";
+    this.popup.style.display = "none";
+    this.popup.style.direction = "ltr";
+    this.buildKeyboard();
+    this.wrapper.appendChild(this.popup);
+    this.host.appendChild(this.wrapper);
+
+    if (!this.readOnly) {
+      this.display.addEventListener("click", function (e) {
+        e.stopPropagation();
+        self.showKeyboard();
+      });
+      this.popup.addEventListener("click", function (e) {
+        e.stopPropagation();
+      });
+      document.addEventListener("click", function () {
+        self.hideKeyboard();
+      });
+      this.initDrag();
+    }
+    this.render();
+  };
+
+  MoodleFractionKeyboard.prototype.buildKeyboard = function () {
+    var topKeys = [];
+    if (this.allowAlgebra) {
+      if (this.variableMode === "az") {
+        topKeys = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"];
+      } else {
+        topKeys = ["X"];
+      }
+    }
+
+    var panel = document.createElement("div");
+    panel.style.width = "360px";
+
+    this.dragHeader = document.createElement("div");
+    this.dragHeader.innerHTML = "מקלדת";
+    this.dragHeader.style.textAlign = "center";
+    this.dragHeader.style.padding = "6px";
+    this.dragHeader.style.marginBottom = "6px";
+    this.dragHeader.style.border = "1px solid #aaa";
+    this.dragHeader.style.borderRadius = "5px";
+    this.dragHeader.style.background = "#eee";
+    this.dragHeader.style.cursor = "move";
+    panel.appendChild(this.dragHeader);
+
+    var functionRow = document.createElement("div");
+    functionRow.style.display = "grid";
+    functionRow.style.gridTemplateColumns = "repeat(6, 1fr)";
+    functionRow.style.gap = "5px";
+    this.addKey(functionRow, "(", "(");
+    this.addKey(functionRow, ")", ")");
+    this.addKey(functionRow, "x²", "square");
+    this.addKey(functionRow, "xʸ", "power");
+    this.addKey(functionRow, "√", "sqrt");
+    this.addKey(functionRow, "⌫", "backspace");
+    panel.appendChild(functionRow);
+
+    if (topKeys.length > 0) {
+      var varRow = document.createElement("div");
+      varRow.style.display = "grid";
+      varRow.style.gridTemplateColumns = this.variableMode === "az" ? "repeat(9, 1fr)" : "repeat(1, 1fr)";
+      varRow.style.gap = "5px";
+      varRow.style.marginTop = "5px";
+      for (var i = 0; i < topKeys.length; i++) {
+        this.addKey(varRow, topKeys[i], topKeys[i]);
+      }
+      panel.appendChild(varRow);
+    }
+
+    var calc = document.createElement("div");
+    calc.style.display = "grid";
+    calc.style.gridTemplateColumns = "repeat(4, 1fr)";
+    calc.style.gap = "5px";
+    calc.style.marginTop = "8px";
+
+    this.addKey(calc, "7", "7"); this.addKey(calc, "8", "8"); this.addKey(calc, "9", "9"); this.addKey(calc, "÷", "/");
+    this.addKey(calc, "4", "4"); this.addKey(calc, "5", "5"); this.addKey(calc, "6", "6"); this.addKey(calc, "×", "*");
+    this.addKey(calc, "1", "1"); this.addKey(calc, "2", "2"); this.addKey(calc, "3", "3"); this.addKey(calc, "−", "-");
+    this.addKey(calc, "0", "0"); this.addKey(calc, ".", "."); this.addKey(calc, "←", "left"); this.addKey(calc, "+", "+");
+    this.addKey(calc, "→", "right"); this.addKey(calc, "נקה", "clear"); this.addKey(calc, "סגור", "close"); this.addKey(calc, "רווח", "space");
+
+    panel.appendChild(calc);
+    this.popup.appendChild(panel);
+  };
+
+  MoodleFractionKeyboard.prototype.addKey = function (parent, label, action) {
+    var self = this;
+    var b = document.createElement("button");
+    b.type = "button";
+    b.innerHTML = label;
+    b.style.minHeight = "38px";
+    b.style.fontSize = "18px";
+    b.style.border = "1px solid #999";
+    b.style.borderRadius = "5px";
+    b.style.background = "#fff";
+    b.style.cursor = "pointer";
+    b.addEventListener("click", function () {
+      self.handleAction(action);
+    });
+    parent.appendChild(b);
+  };
+
+  MoodleFractionKeyboard.prototype.showKeyboard = function () {
+    if (!this.readOnly) {
+      if (this.popup.style.display !== "block") {
+        var r = this.display.getBoundingClientRect();
+        this.popup.style.left = String(Math.max(10, r.left)) + "px";
+        this.popup.style.top = String(Math.max(10, r.bottom + 8)) + "px";
+      }
+      this.popup.style.display = "block";
+    }
+  };
+
+  MoodleFractionKeyboard.prototype.initDrag = function () {
+    var self = this;
+    var dragging = false;
+    var dx = 0;
+    var dy = 0;
+    this.dragHeader.addEventListener("mousedown", function (e) {
+      dragging = true;
+      dx = e.clientX - self.popup.offsetLeft;
+      dy = e.clientY - self.popup.offsetTop;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    document.addEventListener("mousemove", function (e) {
+      if (!dragging) { return; }
+      self.popup.style.left = String(e.clientX - dx) + "px";
+      self.popup.style.top = String(e.clientY - dy) + "px";
+    });
+    document.addEventListener("mouseup", function () { dragging = false; });
+  };
+
+  MoodleFractionKeyboard.prototype.hideKeyboard = function () {
+    this.popup.style.display = "none";
+  };
+
+  MoodleFractionKeyboard.prototype.handleAction = function (action) {
+    if (this.readOnly) { return; }
+    if (action === "close") { this.hideKeyboard(); return; }
+    if (action === "clear") { this.value = ""; this.cursor = 0; this.renderAndNotify(); return; }
+    if (action === "backspace") { this.deleteBeforeCursor(); this.renderAndNotify(); return; }
+    if (action === "left") { if (this.cursor > 0) { this.cursor--; } this.render(); return; }
+    if (action === "right") { if (this.cursor < this.value.length) { this.cursor++; } this.render(); return; }
+    if (action === "square") { this.insertText("^2"); this.renderAndNotify(); return; }
+    if (action === "power") { this.insertText("^()"); this.cursor--; this.renderAndNotify(); return; }
+    if (action === "sqrt") { this.insertText("sqrt()"); this.cursor--; this.renderAndNotify(); return; }
+    if (action === "space") { this.insertText(" "); this.renderAndNotify(); return; }
+    if (!this.allowAlgebra && this.isLetter(action)) { return; }
+    this.insertText(action);
+    this.renderAndNotify();
+  };
+
+  MoodleFractionKeyboard.prototype.insertText = function (txt) {
+    var before = this.value.substring(0, this.cursor);
+    var after = this.value.substring(this.cursor);
+    this.value = before + txt + after;
+    this.cursor = this.cursor + txt.length;
+  };
+
+  MoodleFractionKeyboard.prototype.deleteBeforeCursor = function () {
+    if (this.cursor <= 0) { return; }
+    this.value = this.value.substring(0, this.cursor - 1) + this.value.substring(this.cursor);
+    this.cursor--;
+  };
+
+  MoodleFractionKeyboard.prototype.isLetter = function (s) {
+    if (!s || s.length !== 1) { return false; }
+    var c = s.charCodeAt(0);
+    return c >= 65 && c <= 90;
+  };
+
+  MoodleFractionKeyboard.prototype.renderAndNotify = function () {
+    this.render();
+    if (this.onChange) { this.onChange(this.getMoodleValue()); }
+  };
+
+  MoodleFractionKeyboard.prototype.render = function () {
+    this.mathLine.innerHTML = "\\(" + this.toLatex(this.value) + "\\)";
+    if (window.MathJax && window.MathJax.typesetPromise) {
+      window.MathJax.typesetPromise([this.mathLine]);
+    }
+  };
+
+  MoodleFractionKeyboard.prototype.toLatex = function (s) {
+    if (s === "") { return ""; }
+    return this.toLatexPart(s);
+  };
+
+  MoodleFractionKeyboard.prototype.toLatexPart = function (s) {
+    var slash = this.findTopLevelOperator(s, "/");
+    if (slash >= 0) {
+      var left = s.substring(0, slash);
+      var right = s.substring(slash + 1);
+      if (left === "") { left = "□"; }
+      if (right === "") { right = "□"; }
+      return "\\frac{" + this.toLatexPart(left) + "}{" + this.toLatexPart(right) + "}";
+    }
+
+    var out = "";
+    var i = 0;
+    while (i < s.length) {
+      var ch = s.charAt(i);
+      if (ch === "*") { out += " \\cdot "; i++; continue; }
+      if (ch === "/") { out += " / "; i++; continue; }
+      if (ch === "^") {
+        if (s.charAt(i + 1) === "(") {
+          var close = this.findClosing(s, i + 1);
+          if (close > i) {
+            var powerText = s.substring(i + 2, close);
+            if (powerText === "") { powerText = "□"; }
+            out += "^{" + this.toLatexPart(powerText) + "}";
+            i = close + 1;
+          } else {
+            out += "^{□}";
+            i++;
+          }
+        } else {
+          out += "^";
+          i++;
+        }
+        continue;
+      }
+      if (s.substring(i, i + 5) === "sqrt(") {
+        var end = this.findClosing(s, i + 4);
+        if (end > i) {
+          var rootText = s.substring(i + 5, end);
+          if (rootText === "") { rootText = "□"; }
+          out += "\\sqrt{" + this.toLatexPart(rootText) + "}";
+          i = end + 1;
+        } else {
+          out += "\\sqrt{□}";
+          i = i + 5;
+        }
+        continue;
+      }
+      if (ch === "(") {
+        var close2 = this.findClosing(s, i);
+        if (close2 > i) {
+          var inside = s.substring(i + 1, close2);
+          out += "(" + this.toLatexPart(inside) + ")";
+          i = close2 + 1;
+        } else {
+          out += "(";
+          i++;
+        }
+        continue;
+      }
+      if (ch === "□") { out += "\\square"; i++; continue; }
+      out += ch;
+      i++;
+    }
+    return out;
+  };
+
+  MoodleFractionKeyboard.prototype.findTopLevelOperator = function (s, op) {
+    var depth = 0;
+    var i;
+    for (i = s.length - 1; i >= 0; i--) {
+      var ch = s.charAt(i);
+      if (ch === ")") { depth++; continue; }
+      if (ch === "(") { depth--; continue; }
+      if (depth === 0 && ch === op) { return i; }
+    }
+    return -1;
+  };
+
+  MoodleFractionKeyboard.prototype.findClosing = function (s, openIndex) {
+    var depth = 0;
+    for (var i = openIndex; i < s.length; i++) {
+      if (s.charAt(i) === "(") { depth++; }
+      if (s.charAt(i) === ")") {
+        depth--;
+        if (depth === 0) { return i; }
+      }
+    }
+    return -1;
+  };
+
+  MoodleFractionKeyboard.prototype.loadFromMoodle = function (moodleString) {
+    if (moodleString === null || moodleString === undefined || moodleString === "") {
+      this.value = "";
+      this.cursor = 0;
+    } else {
+      this.value = String(moodleString);
+      this.cursor = this.value.length;
+    }
+    this.render();
+  };
+
+  MoodleFractionKeyboard.prototype.getMoodleValue = function () {
+    return this.value;
+  };
+
+  MoodleFractionKeyboard.prototype.setReadOnly = function (ro) {
+    this.readOnly = ro === true;
+    this.display.style.background = this.readOnly ? "#eee" : "#fff";
+    this.display.style.cursor = this.readOnly ? "default" : "pointer";
+    if (this.readOnly) { this.hideKeyboard(); }
+  };
+
+  window.MoodleFractionKeyboard = MoodleFractionKeyboard;
+}());
+  </script>
+
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['\\(', '\\)']] },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+</head>
+<body dir="rtl">
+  <h2>בדיקת מקלדת שברים וביטויים למוודל</h2>
+
+  <p>לחץ על שדה התצוגה כדי לפתוח את המקלדת. לחיצה מחוץ למקלדת או על “סגור” מסתירה אותה. אפשר לגרור את חלון המקלדת בעזרת הכותרת.</p>
+
+  <div id="fractionBox"></div>
+
+  <h3>ערך שמועבר למוודל</h3>
+  <textarea id="moodleValue" rows="4" cols="70" readonly></textarea>
+
+  <h3>בדיקת טעינה ממודל</h3>
+  <input id="loadValue" value="2/(3+X)" size="30">
+  <button type="button" id="loadButton">טען לרכיב</button>
+  <button type="button" id="emptyButton">טען מחרוזת ריקה</button>
+
+  <script>
+    var widget = new MoodleFractionKeyboard({
+      hostId: "fractionBox",
+      allowAlgebra: true,
+      variableMode: "x", /* אפשר גם "az" */
+      readOnly: false,
+      onChange: function (v) {
+        document.getElementById("moodleValue").value = v;
+      }
+    });
+
+    document.getElementById("loadButton").addEventListener("click", function () {
+      widget.loadFromMoodle(document.getElementById("loadValue").value);
+      document.getElementById("moodleValue").value = widget.getMoodleValue();
+    });
+
+    document.getElementById("emptyButton").addEventListener("click", function () {
+      widget.loadFromMoodle("");
+      document.getElementById("moodleValue").value = widget.getMoodleValue();
+    });
+  </script>
+</body>
+</html>

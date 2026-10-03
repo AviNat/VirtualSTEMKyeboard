@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>בדיקת ספריית קלט שברים למוודל</title>
+</head>
+<body>
+
+<h2>בדיקת ספריית קלט שברים למוודל</h2>
+
+<p>
+  דוגמאות קלט מותרות:
+  <br>
+  <span dir="ltr">3+4/7</span> &nbsp; | &nbsp;
+  <span dir="ltr">2/(3+x)</span> &nbsp; | &nbsp;
+  <span dir="ltr">-1+2/5</span> &nbsp; | &nbsp;
+  <span dir="ltr">4/7</span>
+</p>
+
+<hr>
+
+<h3>רכיב שמאפשר ביטוי אלגברי</h3>
+<div id="fractionBox1"></div>
+<p>
+  <button type="button" id="load1">טען ערך מהמודל</button>
+  <button type="button" id="export1">תרגם לפורמט Moodle</button>
+</p>
+<p>
+  ערך מדומה מהמודל:
+  <input id="modelValue1" type="text" dir="ltr" value="2/(3+x)">
+</p>
+<p>
+  תוצאה:
+  <input id="result1" type="text" dir="ltr" size="60" readonly>
+</p>
+
+<hr>
+
+<h3>רכיב מספרי בלבד</h3>
+<div id="fractionBox2"></div>
+<p>
+  <button type="button" id="load2">טען ערך ריק מהמודל</button>
+  <button type="button" id="export2">תרגם לפורמט Moodle</button>
+</p>
+<p>
+  תוצאה:
+  <input id="result2" type="text" dir="ltr" size="60" readonly>
+</p>
+
+<hr>
+
+<h3>רכיב לקריאה בלבד</h3>
+<div id="fractionBox3"></div>
+<p>
+  <button type="button" id="export3">קרא ערך</button>
+</p>
+<p>
+  תוצאה:
+  <input id="result3" type="text" dir="ltr" size="60" readonly>
+</p>
+
+<script>
+/*
+  MoodleFractionInput
+  -------------------
+  ספרייה פשוטה ליצירת שדה קלט עבור שבר פשוט, שבר מעורב או ביטוי שברי.
+
+  שימוש בסיסי:
+
+  var box = MoodleFractionInput.create({
+    divId: "fractionBox1",
+    allowAlgebraic: true,
+    readOnly: false
+  });
+
+  box.loadFromModel("2/(3+x)");
+  var valueForMoodle = box.toMoodleFormula();
+
+  הערות:
+  1. שבר פשוט: 4/7 נשאר 4/7.
+  2. שבר מעורב בפורמט 3+4/7 נשאר 3+4/7.
+  3. ביטוי כמו 2/(3+x) נשאר 2/(3+x), אם allowAlgebraic=true.
+  4. אם allowAlgebraic=false, מותרות רק ספרות, נקודה עשרונית, רווחים, סוגריים, וסימני + - * /.
+  5. אם פונקציית הטעינה מקבלת מחרוזת ריקה, שדה הקלט מתרוקן.
+*/
+var MoodleFractionInput = (function () {
+
+  function trimText(text) {
+    var start;
+    var end;
+
+    if (text === null || text === undefined) {
+      return "";
+    }
+
+    text = String(text);
+    start = 0;
+    end = text.length - 1;
+
+    while (start <= end && isWhiteSpace(text.charAt(start))) {
+      start = start + 1;
+    }
+
+    while (end >= start && isWhiteSpace(text.charAt(end))) {
+      end = end - 1;
+    }
+
+    if (end < start) {
+      return "";
+    }
+
+    return text.substring(start, end + 1);
+  }
+
+  function isWhiteSpace(ch) {
+    return ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
+  }
+
+  function removeAllWhiteSpaces(text) {
+    var out;
+    var i;
+    var ch;
+
+    out = "";
+    for (i = 0; i < text.length; i = i + 1) {
+      ch = text.charAt(i);
+      if (!isWhiteSpace(ch)) {
+        out = out + ch;
+      }
+    }
+    return out;
+  }
+
+  function isDigit(ch) {
+    return ch >= "0" && ch <= "9";
+  }
+
+  function isLetter(ch) {
+    return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z");
+  }
+
+  function isAllowedNumericCharacter(ch) {
+    return isDigit(ch) || ch === "." || ch === "+" || ch === "-" || ch === "*" || ch === "/" || ch === "(" || ch === ")";
+  }
+
+  function isAllowedAlgebraicCharacter(ch) {
+    return isAllowedNumericCharacter(ch) || isLetter(ch) || ch === "_";
+  }
+
+  function validateExpression(text, allowAlgebraic) {
+    var i;
+    var ch;
+    var balance;
+
+    if (text === "") {
+      return { ok: true, message: "" };
+    }
+
+    balance = 0;
+    for (i = 0; i < text.length; i = i + 1) {
+      ch = text.charAt(i);
+
+      if (allowAlgebraic) {
+        if (!isAllowedAlgebraicCharacter(ch)) {
+          return { ok: false, message: "תו לא חוקי: " + ch };
+        }
+      } else {
+        if (!isAllowedNumericCharacter(ch)) {
+          return { ok: false, message: "במצב מספרי בלבד אסור להשתמש בתו: " + ch };
+        }
+      }
+
+      if (ch === "(") {
+        balance = balance + 1;
+      }
+      if (ch === ")") {
+        balance = balance - 1;
+      }
+      if (balance < 0) {
+        return { ok: false, message: "סוגריים לא מאוזנים" };
+      }
+    }
+
+    if (balance !== 0) {
+      return { ok: false, message: "סוגריים לא מאוזנים" };
+    }
+
+    return { ok: true, message: "" };
+  }
+
+  function createInputElement(readOnly) {
+    var input;
+
+    input = document.createElement("input");
+    input.type = "text";
+    input.dir = "ltr";
+    input.size = 30;
+    input.setAttribute("aria-label", "fraction input");
+    input.placeholder = "3+4/7 או 2/(3+x)";
+
+    if (readOnly) {
+      input.readOnly = true;
+    }
+
+    return input;
+  }
+
+  function createMessageElement() {
+    var msg;
+
+    msg = document.createElement("div");
+    msg.dir = "rtl";
+    msg.innerHTML = "";
+    return msg;
+  }
+
+  function create(config) {
+    var div;
+    var input;
+    var msg;
+    var allowAlgebraic;
+    var readOnly;
+
+    if (!config) {
+      config = {};
+    }
+
+    div = document.getElementById(config.divId);
+    if (!div) {
+      throw new Error("לא נמצא DIV עם המזהה: " + config.divId);
+    }
+
+    allowAlgebraic = config.allowAlgebraic === true;
+    readOnly = config.readOnly === true;
+
+    input = createInputElement(readOnly);
+    msg = createMessageElement();
+
+    div.innerHTML = "";
+    div.appendChild(input);
+    div.appendChild(msg);
+
+    function loadFromModel(modelExpression) {
+      if (modelExpression === null || modelExpression === undefined || String(modelExpression) === "") {
+        input.value = "";
+        msg.innerHTML = "";
+        return "";
+      }
+
+      input.value = String(modelExpression);
+      msg.innerHTML = "";
+      return input.value;
+    }
+
+    function toMoodleFormula() {
+      var text;
+      var check;
+
+      text = trimText(input.value);
+      text = removeAllWhiteSpaces(text);
+
+      check = validateExpression(text, allowAlgebraic);
+      if (!check.ok) {
+        msg.innerHTML = check.message;
+        return "";
+      }
+
+      msg.innerHTML = "";
+      return text;
+    }
+
+    function getInputElement() {
+      return input;
+    }
+
+    function setReadOnly(value) {
+      input.readOnly = value === true;
+    }
+
+    return {
+      loadFromModel: loadFromModel,
+      toMoodleFormula: toMoodleFormula,
+      getInputElement: getInputElement,
+      setReadOnly: setReadOnly
+    };
+  }
+
+  return {
+    create: create
+  };
+
+}());
+</script>
+
+<script>
+var widget1;
+var widget2;
+var widget3;
+
+widget1 = MoodleFractionInput.create({
+  divId: "fractionBox1",
+  allowAlgebraic: true,
+  readOnly: false
+});
+
+widget2 = MoodleFractionInput.create({
+  divId: "fractionBox2",
+  allowAlgebraic: false,
+  readOnly: false
+});
+
+widget3 = MoodleFractionInput.create({
+  divId: "fractionBox3",
+  allowAlgebraic: true,
+  readOnly: true
+});
+
+widget1.loadFromModel("3+4/7");
+widget2.loadFromModel("");
+widget3.loadFromModel("2/(3+x)");
+
+document.getElementById("load1").onclick = function () {
+  widget1.loadFromModel(document.getElementById("modelValue1").value);
+};
+
+document.getElementById("export1").onclick = function () {
+  document.getElementById("result1").value = widget1.toMoodleFormula();
+};
+
+document.getElementById("load2").onclick = function () {
+  widget2.loadFromModel("");
+};
+
+document.getElementById("export2").onclick = function () {
+  document.getElementById("result2").value = widget2.toMoodleFormula();
+};
+
+document.getElementById("export3").onclick = function () {
+  document.getElementById("result3").value = widget3.toMoodleFormula();
+};
+</script>
+
+</body>
+</html>
