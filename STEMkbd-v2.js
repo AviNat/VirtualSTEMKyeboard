@@ -1735,6 +1735,12 @@ function MoodleStemKeyboard(options) {
     this.divId = options.divId;
     this.displayId = options.displayId || null;
     this.displayWidth = options.displayWidth || 300;
+    /*
+     * inline: the answer box sits inside a line of text, like a <span> ("f(x) = [box] cm"). The box grows with the
+     * answer; options.displayWidth, when given, fixes its width. Off by default: the box is a block, as before.
+     */
+    this.inline = options.inline === true;
+    this.inlineWidth = options.displayWidth > 0 ? options.displayWidth : 0;
     this.showKeyboardButton = options.showKeyboardButton === true;
     this.allowAlgebra = options.allowAlgebra === true;
     this.variableMode = options.variableMode || "x";
@@ -3723,7 +3729,6 @@ MoodleStemKeyboard.prototype.updateMoodleTarget = function () {
 MoodleStemKeyboard.prototype.render = function () {
     let latex = this.latexNode(
             this.ast,
-            this.variableDefinitions,
             this.readOnly
                 ? null
                 : this.active
@@ -3853,6 +3858,12 @@ MoodleStemKeyboard.prototype.init = function () {
 
     this.root.tabIndex = -1;
 
+    if (this.inline) {
+        this.root.style.display = "inline-block";
+        this.root.style.verticalAlign = "middle";
+        this.root.style.outline = "none";
+    }
+
     this.root.onkeydown = function (e) {
         self.handlePhysicalKey(e);
     };
@@ -3900,6 +3911,20 @@ MoodleStemKeyboard.prototype.init = function () {
 
         this.display.style.overflowX = "auto";
 
+        /* inline: one line high, as wide as the answer (or displayWidth) */
+        if (this.inline) {
+            this.display.style.display = "inline-block";
+            this.display.style.verticalAlign = "middle";
+            this.display.style.width = this.inlineWidth ? this.inlineWidth + "px" : "auto";
+            this.display.style.minWidth = "3em";
+            this.display.style.maxWidth = "100%";
+            this.display.style.minHeight = "1.8em";
+            this.display.style.padding = "4px 6px";
+            this.display.style.fontSize = "1.15em";
+            this.display.style.whiteSpace = "nowrap";
+            this.display.style.overflowY = "hidden";     // grows with a fraction; no vertical scroll arrows
+        }
+
         this.root.appendChild(
             this.display
         );
@@ -3941,7 +3966,13 @@ MoodleStemKeyboard.prototype.init = function () {
     if (!this.externalDisplay) {
         this.popup.style.left = "0px";
 
-        this.popup.style.top = "55px";
+        this.popup.style.top = this.inline ? "100%" : "55px";
+    }
+
+    if (this.inline) {
+        this.popup.style.marginTop = "4px";
+        this.popup.style.textAlign = "left";
+        this.popup.style.whiteSpace = "normal";
     }
 
     this.popup.style.width = "360px";
@@ -4025,7 +4056,7 @@ MoodleStemKeyboard.prototype.createKeyboardButton = function () {
     button.style.background = "transparent";
     button.style.padding = "0";
     button.style.margin = "0";
-    button.style.fontSize = "36px";
+    button.style.fontSize = this.inline ? "1.5em" : "36px";
     button.style.lineHeight = "1";
     button.style.cursor = "pointer";
     button.onclick = function (e) {
@@ -4638,7 +4669,36 @@ MoodleStemKeyboard.prototype.showKeyboard = function () {
 
     this.popup.style.display = "block";
 
-    this.root.focus();
+    if (this.inline && !this.externalDisplay) {
+        this.keepPopupInPage();
+    }
+
+    if (this.inline) {
+        this.root.focus({ preventScroll: true });
+    } else {
+        this.root.focus();
+    }
+};
+
+/*
+ * inline: the box can be anywhere in a line, so the keyboard under it may run past the right edge of the page -
+ * shifted left to fit (not past the left edge).
+ */
+MoodleStemKeyboard.prototype.keepPopupInPage = function () {
+    let pageWidth = document.documentElement.clientWidth;
+    let rect;
+    let shift;
+
+    this.popup.style.left = "0px";
+    rect = this.popup.getBoundingClientRect();
+    shift = Math.min(
+            Math.max(0, rect.right - (pageWidth - 8)),
+            Math.max(0, rect.left - 8)
+        );
+
+    if (shift > 0) {
+        this.popup.style.left = (-shift) + "px";
+    }
 };
 
 MoodleStemKeyboard.prototype.hideKeyboard = function () {

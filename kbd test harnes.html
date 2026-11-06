@@ -40,8 +40,8 @@ window.MathJax = {
     </p>
 </td>
 
-<td style="vertical-align:top;">
-    <div id="keyboardHost"></div>
+<td style="vertical-align:top; direction:rtl;">
+    <span>\(y=\)</span><span id="keyboardHost"></span><span>[units]</span>
 </td>
 </tr>
 </table>
@@ -68,8 +68,8 @@ let variableDefinitions = [
     // "b",
     // "s",
     "x",
-    "ab",
-    // { value: "alpha", label: "&alpha;" },
+    // "ab",
+    { value: "alpha", label: "&alpha;" },
     { value: "t", label: "t" }
 ];
 
@@ -89,6 +89,7 @@ keyboard = new window.MoodleStemKeyboard({
     divId: "keyboardHost",
     // displayId: "answerArea",
     displayWidth: 300, 
+    inline:true, 
     allowAlgebra: true,
     variableMode: "xyz",
     variables: variableDefinitions,
@@ -101,7 +102,7 @@ keyboard = new window.MoodleStemKeyboard({
     showGroupHeadings: false,
     language: "he",
     MulOp : "\\cdot",
-    showKeyboardButton: true,
+    showKeyboardButton: false,
     power10: true, 
     showPi: true, 
     setParamFunc: setParamTest
