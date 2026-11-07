@@ -7,6 +7,11 @@
    Exposes:
      window.MoodleStemKeyboard
      window.MoodleStemExpression
+
+   2026-11-06: "/" makes a division structure - the term before it is the numerator, the denominator is a slot that
+   takes anything (1+2, brackets, roots) until the right arrow (↱) leaves it. Before, "/" was an operator before one
+   item (7/1+2 was 7/1 + 2). The value for Moodle has the same form as before (7/3, 7/(1+2), 2*x/3); answers saved
+   before open as division structures and give the same value back.
    ============================================================ */
 
 let NEXT_NODE_ID = 1;
@@ -108,6 +113,16 @@ function makeSubscript(base) {
     };
 }
 
+/* a / b: numerator and denominator are expressions */
+function makeDivide(numerator, denominator) {
+    return {
+        type: "divide",
+        id: nodeId(),
+        numerator: numerator || makeExpression(),
+        denominator: denominator || makeExpression()
+    };
+}
+
 function makeEquation() {
     return {
         type: "equation",
@@ -141,6 +156,7 @@ function isAtom(node) {
         node.type === "group" ||
         node.type === "fraction" ||
         node.type === "mixedFraction" ||
+        node.type === "divide" ||
         node.type === "sqrt" ||
         node.type === "power" ||
         node.type === "power10" ||
@@ -311,6 +327,24 @@ function serializeNode(node) {
         return "(" + node.whole.value + "+" + node.numerator.value + "/" + node.denominator.value + ")";
     }
 
+    /*
+     * As v2 wrote it: the numerator is one term (no + or - at its level), so it needs no brackets (2*x/3); the
+     * denominator gets them unless it is one item (7/3, 7/(1+2) for a bracket the student typed, 7/(1+2) for 1+2
+     * typed in the slot). A division in the denominator is bracketed: a/(b/c).
+     */
+    if (node.type === "divide") {
+        out = serializeNode(node.denominator);
+
+        if (
+            node.denominator.items.length !== 1 ||
+            node.denominator.items[0].type === "divide"
+        ) {
+            out = "(" + out + ")";
+        }
+
+        return serializeNode(node.numerator) + "/" + out;
+    }
+
     if (node.type === "sqrt") {
         return "SQRT(" + serializeNode(node.radicand) + ")";
     }
@@ -382,6 +416,15 @@ function variableLabel(definitions, value) {
 function cursorLatex() {
     return "\\mathord{\\vphantom{0}\\mid}";
 }
+
+/*
+ * An empty answer gets no red ❗ (options.showErrors). Complete or not: isCompleteNode (MOODLE VALUE below) - the same
+ * test that sends an empty value to Moodle; the text-based versions up to v1 showed the ❗ when their parser failed.
+ */
+function isEmptyAnswer(ast) {
+    return ast.parts.length === 1 && ast.parts[0].items.length === 0;
+}
+
 function latexExpression(expr, definitions, active) {
     let items = expr.items;
     let out = "";
@@ -571,6 +614,13 @@ MoodleStemKeyboard.prototype.latexNode = function (node, active) {
 
     if (node.type === "mixedFraction") {
         return this.latexNode(node.whole, active) + "\\frac{" + this.latexNode(node.numerator, active) + "}{" + this.latexNode(node.denominator, active) + "}";
+    }
+
+    /* an empty denominator shows □, or the cursor while it is being typed */
+    if (node.type === "divide") {
+        out = this.latexNode(node.denominator, active);
+
+        return "\\frac{" + this.latexNode(node.numerator, active) + "}{" + (out === "" ? "\\square" : out) + "}";
     }
 
     if (node.type === "sqrt") {
@@ -1246,6 +1296,18 @@ function findNodeById(node, id) {
             node.denominator,
             id
         );
+    } else if (node.type === "divide") {
+        found = findNodeById(
+                node.numerator,
+                id
+            );
+
+        if (found) return found;
+
+        return findNodeById(
+            node.denominator,
+            id
+        );
     } else if (node.type === "sqrt") {
         return findNodeById(
             node.radicand,
@@ -1380,6 +1442,25 @@ function findParentInfo(node, childId) {
                 field: "denominator"
             };
         }
+    }
+
+    if (node.type === "divide") {
+        if (node.numerator.id === childId) {
+            return {
+                parent: node,
+                field: "numerator"
+            };
+        }
+
+        if (node.denominator.id === childId) {
+            return {
+                parent: node,
+                field: "denominator"
+            };
+        }
+
+        return findParentInfo(node.numerator, childId) ||
+            findParentInfo(node.denominator, childId);
     }
 
     if (node.type === "sqrt") {
@@ -1558,6 +1639,9 @@ function collectVariables(node, result) {
             node.denominator,
             result
         );
+    } else if (node.type === "divide") {
+        collectVariables(node.numerator, result);
+        collectVariables(node.denominator, result);
     } else if (node.type === "sqrt") {
         collectVariables(
             node.radicand,
@@ -1741,6 +1825,9 @@ function MoodleStemKeyboard(options) {
      */
     this.inline = options.inline === true;
     this.inlineWidth = options.displayWidth > 0 ? options.displayWidth : 0;
+    /* showErrors: a red ❗ after an answer that is not complete (hasError is set either way). Off by default. */
+    this.showErrors = options.showErrors === true;
+    this.hasError = false;
     this.showKeyboardButton = options.showKeyboardButton === true;
     this.allowAlgebra = options.allowAlgebra === true;
     this.variableMode = options.variableMode || "x";
@@ -2111,7 +2198,8 @@ MoodleStemKeyboard.prototype.exitActiveStructure = function () {
             (
                 info.parent.type === "sqrt" ||
                 info.parent.type === "power" ||
-                info.parent.type === "group"
+                info.parent.type === "group" ||
+                info.parent.type === "divide"
             )
         ) {
             owner = info.parent;
@@ -2238,6 +2326,11 @@ MoodleStemKeyboard.prototype.insertOperator = function (op) {
 
     if (this.readOnly) return;
 
+    if (op === "/") {
+        this.insertDivide();
+        return;
+    }
+
     if (!this.closeActiveForOperator()) {
         return;
     }
@@ -2290,6 +2383,174 @@ MoodleStemKeyboard.prototype.insertOperator = function (op) {
 
     this.render();
 };
+
+/*
+ * "/": the term before the cursor (back to the last + or - at this level) becomes the numerator, as v2 drew it
+ * (2x/3 = \frac{2x}{3}); the cursor goes into the empty denominator and stays there - through +, -, brackets - until
+ * the right arrow (exitActiveStructure). After an operator ("2*" then "/") the "/" takes its place.
+ */
+MoodleStemKeyboard.prototype.insertDivide = function () {
+    let expr;
+    let last;
+    let start;
+    let numerator;
+    let divide;
+
+    if (!this.closeActiveForOperator()) {
+        return;
+    }
+
+    expr = this.getCurrentExpression();
+    last = this.lastItem(expr);
+
+    if (
+        last &&
+        last.type === "operator" &&
+        expr.items.length >= 2 &&
+        expr.items[expr.items.length - 2].type !== "operator"
+    ) {
+        expr.items.pop();
+        last = this.lastItem(expr);
+    }
+
+    if (
+        !last ||
+        last.type === "operator"
+    ) {
+        return;
+    }
+
+    start = expr.items.length;
+
+    while (
+        start > 0 &&
+        !(
+            expr.items[start - 1].type === "operator" &&
+            (
+                expr.items[start - 1].op === "+" ||
+                expr.items[start - 1].op === "-"
+            )
+        )
+    ) {
+        start--;
+    }
+
+    numerator = makeExpression();
+    numerator.items = expr.items.splice(start);
+
+    divide = makeDivide(numerator, null);
+    expr.items.push(divide);
+
+    this.setActiveExpression(divide.denominator);
+
+    this.render();
+};
+
+/*
+ * A saved answer (v2's or v3's: 7/3, 7/(1+2), 2*x/3) read by the parser has "/" as an operator: here each a / b
+ * becomes a division structure, as if typed in v3. A bracket around the whole denominator is the slot itself.
+ * The parser and MoodleStemExpression.analyze are left as in v2.
+ */
+function buildDivides(node) {
+    let items;
+    let out;
+    let start;
+    let i;
+    let item;
+    let right;
+    let numerator;
+    let denominator;
+
+    if (!node) return node;
+
+    if (node.type === "equation") {
+        for (i = 0; i < node.parts.length; i++) {
+            buildDivides(node.parts[i]);
+        }
+
+        return node;
+    }
+
+    if (node.type === "group") {
+        buildDivides(node.expr);
+        return node;
+    }
+
+    if (node.type === "sqrt") {
+        buildDivides(node.radicand);
+        return node;
+    }
+
+    if (node.type === "power") {
+        buildDivides(node.base);
+        buildDivides(node.exponent);
+        return node;
+    }
+
+    if (node.type !== "expression") {
+        return node;
+    }
+
+    items = node.items;
+    out = [];
+    start = 0;
+
+    for (i = 0; i < items.length; i++) {
+        item = buildDivides(items[i]);
+
+        if (
+            item.type === "operator" &&
+            (
+                item.op === "+" ||
+                item.op === "-"
+            )
+        ) {
+            out.push(item);
+            start = out.length;
+            continue;
+        }
+
+        if (
+            item.type === "operator" &&
+            item.op === "/" &&
+            out.length > start
+        ) {
+            right = items[i + 1];
+
+            if (
+                right &&
+                right.type !== "operator"
+            ) {
+                buildDivides(right);
+
+                if (
+                    right.type === "group" &&
+                    right.closed
+                ) {
+                    denominator = right.expr;
+                } else {
+                    denominator = makeExpression();
+                    denominator.items.push(right);
+                }
+
+                i++;
+            } else {
+                denominator = makeExpression();
+            }
+
+            numerator = makeExpression();
+            numerator.items = out.splice(start);
+
+            out.push(makeDivide(numerator, denominator));
+            continue;
+        }
+
+        out.push(item);
+    }
+
+    node.items = out;
+    return node;
+}
 
 MoodleStemKeyboard.prototype.canInsertEquals = function () {
     let expr;
@@ -2580,9 +2841,11 @@ MoodleStemKeyboard.prototype.canInsertPower = function () {
      * A power cannot itself immediately
      * receive another power.
      */
+    /* nor a division (its value would read a/b^2): (a/b)² needs brackets */
     if (
         atom.type === "power" ||
-        atom.type === "power10"
+        atom.type === "power10" ||
+        atom.type === "divide"
     ) {
         return false;
     }
@@ -3043,9 +3306,18 @@ MoodleStemKeyboard.prototype.deleteOne = function () {
             last = activeNode.items[activeNode.items.length - 1];
 
             /*
+             * A division: back into its denominator, deleting its last character (7/3 -> 7/).
+             */
+            if (last.type === "divide") {
+                this.setActiveExpression(last.denominator);
+                this.deleteOne();
+                return;
+            }
+
+            /*
              * Numbers are deleted digit by digit.
              */
-            if (last.type === "number" && last.value.length > 1) {
+            else if (last.type === "number" && last.value.length > 1) {
                 last.value = last.value.substring(0, last.value.length - 1);
             } else {
                 /*
@@ -3137,6 +3409,24 @@ MoodleStemKeyboard.prototype.deleteOne = function () {
             }
 
             /*
+             * Empty denominator:
+             * remove the division, the numerator stays (7/ DEL -> 7).
+             */
+            else if (owner.type === "divide") {
+                if (expr) {
+                    let divideInfo = findParentInfo(this.ast, owner.id);
+
+                    if (divideInfo && divideInfo.parent === expr && divideInfo.field === "items") {
+                        Array.prototype.splice.apply(
+                            expr.items,
+                            [divideInfo.index, 1].concat(owner.numerator.items)
+                        );
+                        this.setActiveExpression(expr);
+                    }
+                }
+            }
+
+            /*
              * Empty exponent:
              * remove the power operation but preserve the base.
              */
@@ -3194,6 +3484,16 @@ MoodleStemKeyboard.prototype.deleteOne = function () {
     else if (last.type === "group") {
         if (last.closed) last.closed = false;
         this.setActiveExpression(last.expr);
+    }
+
+    /*
+     * Division:
+     * DEL goes back into the denominator and deletes its last character (7/3 -> 7/).
+     */
+    else if (last.type === "divide") {
+        this.setActiveExpression(last.denominator);
+        this.deleteOne();
+        return;
     }
 
     /*
@@ -3553,6 +3853,11 @@ function isCompleteNode(node) {
             node.denominator.value !== "";
     }
 
+    if (node.type === "divide") {
+        return isCompleteExpression(node.numerator) &&
+            isCompleteExpression(node.denominator);
+    }
+
     if (node.type === "sqrt") {
         return isCompleteExpression(
             node.radicand
@@ -3665,10 +3970,12 @@ MoodleStemKeyboard.prototype.setValueFromMoodle = function (data) {
         }
     }
 
-    this.ast = parseToAst(
-            value,
-            this.variables,
-            this.variableMode
+    this.ast = buildDivides(
+            parseToAst(
+                value,
+                this.variables,
+                this.variableMode
+            )
         );
 
     this.setActiveExpression(
@@ -3746,6 +4053,12 @@ MoodleStemKeyboard.prototype.render = function () {
     }
 
     this.display.innerHTML = "\\(" + latex + "\\)";
+
+    this.hasError = !isEmptyAnswer(this.ast) && !isCompleteNode(this.ast);
+
+    if (this.showErrors && this.hasError) {
+        this.display.innerHTML += " ❗";
+    }
 
     if (window.MathJax) {
         if ( typeof window.MathJax.typesetClear === "function" ) {
