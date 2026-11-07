@@ -1,4 +1,7 @@
-
+/*
+ * Copyright (c) 2026 Avi Nathan. All rights reserved.
+ * No part of this file may be copied, modified or distributed without the written permission of the copyright holder.
+ */
 (function () {
 "use strict";
 
